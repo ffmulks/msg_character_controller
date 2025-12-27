@@ -49,26 +49,22 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         let up = orientation.up();
         let gravity = controller.gravity;
 
-        // Calculate height error
+        // Calculate height error (positive = below float height, negative = above)
         let height_error = controller.height_error(config.float_height);
-
-        // Spring force: F = k * x - c * v
-        // Where x is height error and v is vertical velocity (along up direction)
         let vertical_velocity = velocity.dot(up);
 
-        // Reduce damping when jumping upward to preserve jump momentum
-        let effective_damping = if vertical_velocity > 200.0 {
-            config.spring_damping * 0.1 // 10% damping when jumping
-        } else {
-            config.spring_damping
-        };
+        // Float height is a FLOOR, not a target!
+        // Only apply spring force when BELOW float height (height_error > 0)
+        // Never pull the character DOWN when they're above float height (e.g., jumping)
+        if height_error > 0.0 {
+            // Spring force: F = k * x - c * v
+            // Only apply when below float height to push character up
+            let spring_force =
+                config.spring_strength * height_error - config.spring_damping * vertical_velocity;
 
-        let spring_force =
-            config.spring_strength * height_error - effective_damping * vertical_velocity;
-
-        // Apply force in the "up" direction
-        let force = up * spring_force;
-        B::apply_force(world, entity, force);
+            let force = up * spring_force;
+            B::apply_force(world, entity, force);
+        }
 
         // Apply cling force when above float height but within cling distance
         // This helps the character stick to ground on bumpy terrain
