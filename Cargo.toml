@@ -52,3 +52,8 @@ required-features = ["examples"]
 name = "float_test"
 path = "examples/float_test.rs"
 required-features = ["examples"]
+
+[[example]]
+name = "hilly_planet"
+path = "examples/hilly_planet.rs"
+required-features = ["examples"]
