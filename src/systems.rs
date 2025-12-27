@@ -18,6 +18,8 @@ use crate::{GravityMode, GravityModeResource};
 ///
 /// This system reads ground detection data from the CharacterController
 /// and applies spring forces to maintain the configured float height.
+/// On slopes, it also applies forces to keep the character snapped to the
+/// ground surface and prevent bouncing.
 pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
     // Collect entities that need floating spring
     let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController)> =
@@ -50,19 +52,42 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
 
         // Calculate height error (positive = below float height, negative = above)
         let height_error = controller.height_error(config.float_height);
-        let vertical_velocity = velocity.dot(up);
+
+        // Get velocity component perpendicular to ground (along ground normal)
+        // This is more accurate for slopes than using orientation.up()
+        let ground_normal = controller.ground_normal;
+        let normal_velocity = velocity.dot(ground_normal);
 
         // Float height is a FLOOR, not a target!
         // Only apply spring force when BELOW float height (height_error > 0)
         // Never pull the character DOWN when they're above float height (e.g., jumping)
         if height_error > 0.0 {
             // Spring force: F = k * x - c * v
-            // Only apply when below float height to push character up
+            // Damping uses velocity perpendicular to ground for better slope handling
             let spring_force =
-                config.spring_strength * height_error - config.spring_damping * vertical_velocity;
+                config.spring_strength * height_error - config.spring_damping * normal_velocity;
 
             let force = up * spring_force;
             B::apply_force(world, entity, force);
+        }
+
+        // SLOPE SNAPPING: Apply additional downward force on slopes to keep
+        // the character pressed against the ground surface. This prevents
+        // the character from bouncing or floating off when walking on slopes.
+        if controller.is_grounded && controller.slope_angle > 0.05 {
+            // The steeper the slope, the more we need to snap
+            let slope_factor = controller.slope_angle.sin();
+
+            // Only apply snap force when:
+            // 1. Not jumping (normal velocity not too high)
+            // 2. Within reasonable distance of target height
+            if normal_velocity < 50.0 && height_error.abs() < config.cling_distance * 2.0 {
+                // Apply a force toward the ground along the ground normal
+                // This helps keep the character pressed against the slope
+                let snap_strength = config.spring_strength * 0.3 * slope_factor;
+                let snap_force = -ground_normal * snap_strength;
+                B::apply_force(world, entity, snap_force);
+            }
         }
 
         // Apply cling force when above float height but within cling distance
@@ -71,7 +96,7 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         if height_error < 0.0
             && controller.ground_distance <= config.float_height + config.cling_distance
             && config.cling_strength > 0.0
-            && vertical_velocity < 100.0
+            && normal_velocity < 100.0
         {
             let cling_force = gravity * config.cling_strength;
             B::apply_force(world, entity, cling_force);
@@ -80,6 +105,7 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         // Apply extra fall gravity when falling (velocity is in -UP direction)
         // This makes the character fall faster, creating a more responsive feel
         // Uses the controller's gravity field
+        let vertical_velocity = velocity.dot(up);
         if vertical_velocity < 0.0 && config.extra_fall_gravity > 0.0 {
             let extra_gravity_force = gravity * config.extra_fall_gravity;
             B::apply_force(world, entity, extra_gravity_force);
@@ -121,10 +147,11 @@ pub fn apply_internal_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
     }
 }
 
-/// Apply horizontal walking movement based on intent.
+/// Apply walking movement based on intent.
 ///
-/// This system handles horizontal movement with slope handling when grounded
-/// and reduced air control when airborne.
+/// When grounded on slopes, velocity is projected onto the slope surface to prevent
+/// the character from launching into the air or sliding off the slope. The floating
+/// spring system handles maintaining the correct height above the ground.
 pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
     let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, WalkIntent, CharacterController)> =
         world
@@ -157,16 +184,9 @@ pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
     for (entity, config, orientation, intent, controller) in entities {
         let current_velocity = B::get_velocity(world, entity);
         let up = orientation.up();
+        let right = orientation.right();
 
-        // Determine movement direction based on ground normal (tangent to slope)
-        // or use the character's local right direction if not grounded
-        let right = if controller.ground_detected {
-            controller.ground_tangent()
-        } else {
-            orientation.right()
-        };
-
-        // Calculate desired velocity
+        // Calculate desired speed from input
         let desired_speed = intent.effective() * config.max_speed;
 
         // Determine acceleration based on grounded state
@@ -176,28 +196,74 @@ pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
             config.acceleration * config.air_control
         };
 
-        // Get horizontal component of current velocity (along movement axis)
-        let current_horizontal = current_velocity.dot(right);
+        let new_velocity = if controller.is_grounded && controller.ground_detected {
+            // GROUNDED: Move along slope surface
+            //
+            // The key insight: when grounded, movement should be ENTIRELY along the
+            // slope surface (tangent). The floating spring handles the vertical component.
+            // We should NOT preserve world-space vertical velocity - that causes launching.
 
-        // Calculate velocity change
-        let velocity_diff = desired_speed - current_horizontal;
-        let max_change = accel * dt;
-        let change = velocity_diff.clamp(-max_change, max_change);
+            let slope_tangent = controller.ground_tangent();
+            let slope_normal = controller.ground_normal;
 
-        // Apply friction when no input
-        let friction_multiplier = if !intent.is_active() && controller.is_grounded {
-            1.0 - config.friction
+            // Project current velocity onto the slope surface to get our current speed
+            // along the slope. This removes any velocity perpendicular to the slope.
+            let current_slope_speed = current_velocity.dot(slope_tangent);
+
+            // Calculate velocity change to reach desired speed
+            let velocity_diff = desired_speed - current_slope_speed;
+            let max_change = accel * dt;
+            let change = velocity_diff.clamp(-max_change, max_change);
+
+            // Apply friction when no input
+            let friction_multiplier = if !intent.is_active() {
+                1.0 - config.friction
+            } else {
+                1.0
+            };
+
+            let new_slope_speed = (current_slope_speed + change) * friction_multiplier;
+
+            // The new velocity is entirely along the slope tangent.
+            // The spring system will handle pushing us up/down to maintain float height.
+            // We keep a small amount of the normal component for the spring to work with,
+            // but heavily damped to prevent bouncing.
+            let normal_velocity = current_velocity.dot(slope_normal);
+
+            // Only preserve downward normal velocity (toward the slope) slightly,
+            // zero out upward normal velocity to prevent launching
+            let preserved_normal = if normal_velocity < 0.0 {
+                // Moving toward slope - preserve a bit for ground conformance
+                normal_velocity * 0.5
+            } else {
+                // Moving away from slope - zero it out to prevent launching
+                0.0
+            };
+
+            slope_tangent * new_slope_speed + slope_normal * preserved_normal
         } else {
-            1.0
+            // AIRBORNE: Use world-space coordinates
+            //
+            // In the air, we use the character's local coordinate system.
+            // Horizontal movement is along the right direction, vertical is preserved.
+
+            // Get horizontal component of current velocity (along character's right)
+            let current_horizontal = current_velocity.dot(right);
+
+            // Calculate velocity change
+            let velocity_diff = desired_speed - current_horizontal;
+            let max_change = accel * dt;
+            let change = velocity_diff.clamp(-max_change, max_change);
+
+            // No friction in air
+            let new_horizontal = current_horizontal + change;
+
+            // Preserve vertical velocity (gravity handles this)
+            let vertical_velocity = current_velocity.dot(up);
+
+            right * new_horizontal + up * vertical_velocity
         };
 
-        // Calculate new horizontal velocity
-        let new_horizontal = (current_horizontal + change) * friction_multiplier;
-
-        // Preserve vertical velocity (along up direction), replace horizontal
-        let vertical_velocity = current_velocity.dot(up);
-
-        let new_velocity = right * new_horizontal + up * vertical_velocity;
         B::set_velocity(world, entity, new_velocity);
     }
 }
