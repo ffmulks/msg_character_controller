@@ -50,8 +50,11 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         let up = orientation.up();
         let gravity = controller.gravity;
 
+        // Use effective float height which accounts for collider dimensions
+        let effective_height = controller.effective_float_height(&config);
+
         // Calculate height error (positive = below float height, negative = above)
-        let height_error = controller.height_error(config.float_height);
+        let height_error = controller.height_error(effective_height);
 
         // Get velocity component perpendicular to ground (along ground normal)
         // This is more accurate for slopes than using orientation.up()
@@ -62,6 +65,21 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         // Only apply spring force when BELOW float height (height_error > 0)
         // Never pull the character DOWN when they're above float height (e.g., jumping)
         if height_error > 0.0 {
+            // When moving downward and below float height, we need to actively push up.
+            // The spring force alone may not be strong enough to counteract deliberate
+            // downward propulsion, so we also apply a velocity correction.
+            if normal_velocity < 0.0 {
+                // Moving toward ground while below float height - apply velocity correction
+                // This ensures the character is pushed UP to float height, not just prevented
+                // from falling. The correction is proportional to how far below we are.
+                let correction_strength = (height_error / effective_height).min(1.0);
+                let velocity_correction = -normal_velocity * correction_strength;
+
+                // Apply both the velocity correction (immediate) and spring force (smooth)
+                let corrected_velocity = velocity + ground_normal * velocity_correction;
+                B::set_velocity(world, entity, corrected_velocity);
+            }
+
             // Spring force: F = k * x - c * v
             // Damping uses velocity perpendicular to ground for better slope handling
             let spring_force =
@@ -94,7 +112,7 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         // This helps the character stick to ground on bumpy terrain
         // But skip if we're moving upward fast (probably jumping)
         if height_error < 0.0
-            && controller.ground_distance <= config.float_height + config.cling_distance
+            && controller.ground_distance <= effective_height + config.cling_distance
             && config.cling_strength > 0.0
             && normal_velocity < 100.0
         {

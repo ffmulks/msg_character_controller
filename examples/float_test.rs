@@ -98,14 +98,18 @@ fn setup(mut commands: Commands) {
     let spawn_pos = Vec2::new(0.0, 200.0); // 400 units above platform!
 
     // Calculate expected float position
-    let float_height = 15.0; // From config
-    let expected_hover_y = -200.0 + 20.0 + float_height; // Platform top + float height
+    // float_height is the gap between the BOTTOM of the capsule and the ground
+    let float_height = 2.0; // 2 pixels gap between capsule bottom and ground
+    let collider_bottom_offset = PLAYER_HALF_HEIGHT / 2.0 + PLAYER_RADIUS; // 4 + 6 = 10
+    let platform_top = -200.0 + 20.0; // Platform at y=-200, half-height=20, so top at -180
+    let expected_hover_y = platform_top + float_height + collider_bottom_offset; // -180 + 2 + 10 = -168
 
     println!("=== FLOAT TEST SETUP ===");
     println!("Spawning player at Y: {}", spawn_pos.y);
-    println!("Platform top at Y: {}", -180.0);
-    println!("Expected float Y: {}", expected_hover_y);
-    println!("Float height config: {}", float_height);
+    println!("Platform top at Y: {}", platform_top);
+    println!("Float height (gap from capsule bottom to ground): {}", float_height);
+    println!("Collider bottom offset: {}", collider_bottom_offset);
+    println!("Expected center Y: {}", expected_hover_y);
 
     commands
         .spawn((
@@ -123,7 +127,7 @@ fn setup(mut commands: Commands) {
             // Character controller with explicit float height and gravity
             CharacterController::with_gravity(Vec2::new(0.0, -980.0)),
             ControllerConfig::player()
-                .with_float_height(15.0) // Should float 15 units above ground
+                .with_float_height(float_height) // Gap between capsule bottom and ground
                 .with_spring(20000.0, 500.0) // VERY strong spring
                 .with_ground_cast_width(PLAYER_RADIUS),
             WalkIntent::default(),
@@ -197,35 +201,39 @@ fn debug_floating(
 
     let grounded_str = if grounded.is_some() { "YES" } else { "NO" };
     let platform_top_y = -180.0;
-    let distance_from_platform = transform.translation.y - platform_top_y;
+    let collider_bottom_offset = PLAYER_HALF_HEIGHT / 2.0 + PLAYER_RADIUS; // 10
+    let capsule_bottom_y = transform.translation.y - collider_bottom_offset;
+    let gap_from_ground = capsule_bottom_y - platform_top_y;
 
     **text = format!(
         "FLOAT TEST\n\
-         Player Y: {:.1}\n\
+         Player center Y: {:.1}\n\
+         Capsule bottom Y: {:.1}\n\
+         Gap from ground: {:.1}\n\
          Velocity Y: {:.1}\n\
-         Distance from platform: {:.1}\n\
          Ground detected: {}\n\
-         Ground distance: {:.1}\n\
+         Ground distance (from center): {:.1}\n\
          Grounded: {}\n\
          \n\
-         EXPECTED: Should hover at ~15 units above platform\n\
-         ACTUAL: {:.1} units above platform",
+         EXPECTED: Capsule bottom should hover ~2 px above platform\n\
+         ACTUAL: {:.1} px gap",
         transform.translation.y,
+        capsule_bottom_y,
+        gap_from_ground,
         velocity.linvel.y,
-        distance_from_platform,
         controller.ground_detected(),
         controller.ground_distance(),
         grounded_str,
-        distance_from_platform
+        gap_from_ground
     );
 
-    // Color based on floating state
-    if distance_from_platform > 10.0 && distance_from_platform < 20.0 && velocity.linvel.y.abs() < 50.0 {
-        color.0 = Color::srgb(0.2, 0.8, 0.2); // Green
+    // Color based on floating state (gap should be around 2 pixels)
+    if gap_from_ground > 0.0 && gap_from_ground < 5.0 && velocity.linvel.y.abs() < 50.0 {
+        color.0 = Color::srgb(0.2, 0.8, 0.2); // Green - stable floating
     } else if controller.ground_detected() {
-        color.0 = Color::srgb(0.9, 0.9, 0.2); // Yellow
+        color.0 = Color::srgb(0.9, 0.9, 0.2); // Yellow - ground detected but not stable
     } else {
-        color.0 = Color::srgb(0.9, 0.3, 0.3); // Red
+        color.0 = Color::srgb(0.9, 0.3, 0.3); // Red - no ground
     }
 }
 

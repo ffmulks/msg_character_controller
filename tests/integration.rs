@@ -272,26 +272,32 @@ mod float_height {
         let controller = app.world().get::<CharacterController>(character).unwrap();
         let transform = app.world().get::<Transform>(character).unwrap();
 
+        // Capsule is created with capsule_y(8.0, 4.0), so collider_bottom_offset = 8 + 4 = 12
+        let collider_bottom_offset = 12.0;
+        // The effective float height (from center) = float_height + collider_bottom_offset
+        let effective_float_height = float_height + collider_bottom_offset;
+
         println!(
-            "PROOF: Character position.y={}, ground_distance={}, float_height={}",
+            "PROOF: Character position.y={}, ground_distance={}, effective_float_height={}",
             transform.translation.y,
             controller.ground_distance(),
-            float_height
+            effective_float_height
         );
 
-        // PROOF: ground_distance should be close to float_height after settling
+        // PROOF: ground_distance should be close to effective_float_height after settling
+        // (ground_distance is measured from center, so it includes the collider offset)
         // Allow tolerance for spring oscillation
         let tolerance = 5.0;
         assert!(
-            (controller.ground_distance() - float_height).abs() < tolerance,
-            "Ground distance {} should be close to float_height {}",
+            (controller.ground_distance() - effective_float_height).abs() < tolerance,
+            "Ground distance {} should be close to effective_float_height {}",
             controller.ground_distance(),
-            float_height
+            effective_float_height
         );
 
         // PROOF: Character should NOT be touching the ground (position should be elevated)
-        // Capsule bottom is at position.y - 12
-        let capsule_bottom = transform.translation.y - 12.0;
+        // Capsule bottom is at position.y - collider_bottom_offset
+        let capsule_bottom = transform.translation.y - collider_bottom_offset;
         let ground_surface = 5.0; // Ground half-height
         assert!(
             capsule_bottom > ground_surface,

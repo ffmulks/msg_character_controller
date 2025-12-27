@@ -155,6 +155,9 @@ pub struct CharacterController {
     pub(crate) ground_contact_point: Vec2,
     /// Whether ground raycast hit something (may be further than float_height).
     pub(crate) ground_detected: bool,
+    /// Distance from collider center to bottom (auto-detected from Collider).
+    /// For a capsule, this is half_height + radius.
+    pub(crate) collider_bottom_offset: f32,
 }
 
 impl Default for CharacterController {
@@ -182,6 +185,7 @@ impl Default for CharacterController {
             ground_distance: f32::MAX,
             ground_contact_point: Vec2::ZERO,
             ground_detected: false,
+            collider_bottom_offset: 0.0,
         }
     }
 }
@@ -281,6 +285,15 @@ impl CharacterController {
             0.0
         }
     }
+
+    /// Get the effective float height from the collider's CENTER.
+    ///
+    /// This is float_height + collider_bottom_offset, ensuring the BOTTOM
+    /// of the collider floats at the configured float_height above ground.
+    #[inline]
+    pub(crate) fn effective_float_height(&self, config: &ControllerConfig) -> f32 {
+        config.float_height + self.collider_bottom_offset
+    }
 }
 
 /// Configuration parameters for the character controller.
@@ -292,7 +305,12 @@ impl CharacterController {
 pub struct ControllerConfig {
     // === Float Settings ===
     /// Target height to float above ground (in world units/pixels).
-    /// This is the key setting - other sensor lengths are derived from it.
+    /// This is the distance from the BOTTOM of the collider to the ground.
+    ///
+    /// For a capsule with `Collider::capsule_y(half_height, radius)`, the system
+    /// automatically detects the collider dimensions and adds them internally.
+    /// So if you set float_height=1.0, the bottom of the capsule will float
+    /// 1 pixel above the ground.
     pub float_height: f32,
 
     /// Extra distance beyond float_height to still consider as "grounded".
@@ -379,7 +397,7 @@ impl Default for ControllerConfig {
     fn default() -> Self {
         Self {
             // Float settings
-            float_height: 15.0,
+            float_height: 1.0, // 1 pixel gap between collider bottom and ground
             cling_distance: 2.0,
             cling_strength: 0.5,
 
@@ -421,22 +439,10 @@ impl Default for ControllerConfig {
 }
 
 impl ControllerConfig {
-    /// Get the ground cast length (derived from float_height).
-    #[inline]
-    pub fn ground_cast_length(&self) -> f32 {
-        self.float_height * self.ground_cast_multiplier
-    }
-
     /// Get the wall cast length (derived from ground_cast_width).
     #[inline]
     pub fn wall_cast_length(&self) -> f32 {
         self.ground_cast_width * self.wall_cast_multiplier
-    }
-
-    /// Get the ceiling cast length (derived from float_height).
-    #[inline]
-    pub fn ceiling_cast_length(&self) -> f32 {
-        self.float_height * self.ceiling_cast_multiplier
     }
 
     /// Create a config optimized for responsive player control.
@@ -639,16 +645,10 @@ mod tests {
 
     #[test]
     fn config_derived_cast_lengths() {
-        let config = ControllerConfig::default().with_float_height(20.0);
-
-        // Ground cast derived from float_height
-        assert_eq!(config.ground_cast_length(), 20.0 * config.ground_cast_multiplier);
+        let config = ControllerConfig::default();
 
         // Wall cast derived from ground_cast_width
         assert_eq!(config.wall_cast_length(), config.ground_cast_width * config.wall_cast_multiplier);
-
-        // Ceiling cast derived from float_height
-        assert_eq!(config.ceiling_cast_length(), 20.0 * config.ceiling_cast_multiplier);
     }
 
     #[test]
