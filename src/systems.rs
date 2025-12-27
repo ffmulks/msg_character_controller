@@ -10,7 +10,7 @@ use bevy::prelude::*;
 
 use crate::backend::CharacterPhysicsBackend;
 use crate::config::{CharacterController, CharacterOrientation, ControllerConfig};
-use crate::intent::{FlyIntent, JumpRequest, WalkIntent};
+use crate::intent::{JumpRequest, PropulsionIntent, WalkIntent};
 use crate::state::{Airborne, Grounded, TouchingCeiling, TouchingWall};
 use crate::{GravityMode, GravityModeResource};
 
@@ -29,7 +29,6 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
                 &CharacterController,
             )>()
             .iter(world)
-            .filter(|(_, _, _, controller)| controller.is_walking())
             .map(|(e, config, orientation, controller)| {
                 (
                     e,
@@ -92,7 +91,6 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
 ///
 /// This system applies gravity from CharacterController.gravity when:
 /// - GravityMode is Internal
-/// - Character is walking
 /// - Character is not grounded
 pub fn apply_internal_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
     // Check gravity mode
@@ -111,7 +109,7 @@ pub fn apply_internal_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
     let entities: Vec<(Entity, CharacterController)> = world
         .query::<(Entity, &CharacterController)>()
         .iter(world)
-        .filter(|(_, controller)| controller.is_walking() && !controller.is_grounded)
+        .filter(|(_, controller)| !controller.is_grounded)
         .map(|(e, controller)| (e, controller.clone()))
         .collect();
 
@@ -123,7 +121,10 @@ pub fn apply_internal_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
     }
 }
 
-/// Apply walking movement based on intent.
+/// Apply horizontal walking movement based on intent.
+///
+/// This system handles horizontal movement with slope handling when grounded
+/// and reduced air control when airborne.
 pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
     let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, WalkIntent, CharacterController)> =
         world
@@ -135,7 +136,6 @@ pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
                 &CharacterController,
             )>()
             .iter(world)
-            .filter(|(_, _, _, _, controller)| controller.is_walking())
             .map(|(e, config, orientation, intent, controller)| {
                 (
                     e,
@@ -202,28 +202,31 @@ pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
     }
 }
 
-/// Apply flying movement based on intent.
+/// Apply vertical propulsion based on intent.
 ///
-/// The FlyIntent is interpreted in the character's local coordinate system:
-/// - intent.x moves along the character's right direction
-/// - intent.y moves along the character's up direction
-pub fn apply_fly_movement<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, FlyIntent)> = world
+/// This system provides vertical thrust (jetpack, thrusters, etc.):
+/// - Positive intent thrusts upward
+/// - Negative intent thrusts downward
+/// - Upward thrust is automatically boosted by gravity magnitude to help counteract it
+///
+/// This is independent of horizontal walking movement and jump impulses.
+pub fn apply_propulsion<B: CharacterPhysicsBackend>(world: &mut World) {
+    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, PropulsionIntent, CharacterController)> = world
         .query::<(
             Entity,
-            &CharacterController,
             &ControllerConfig,
             Option<&CharacterOrientation>,
-            &FlyIntent,
+            &PropulsionIntent,
+            &CharacterController,
         )>()
         .iter(world)
-        .filter(|(_, controller, _, _, _)| controller.is_flying())
-        .map(|(e, _, config, orientation, intent)| {
+        .map(|(e, config, orientation, intent, controller)| {
             (
                 e,
                 *config,
                 orientation.copied().unwrap_or_default(),
                 *intent,
+                controller.clone(),
             )
         })
         .collect();
@@ -235,40 +238,46 @@ pub fn apply_fly_movement<B: CharacterPhysicsBackend>(world: &mut World) {
         .filter(|&d| d > 0.0)
         .unwrap_or(1.0 / 60.0);
 
-    for (entity, config, orientation, intent) in entities {
+    for (entity, config, orientation, intent, controller) in entities {
+        if !intent.is_active() {
+            continue;
+        }
+
         let current_velocity = B::get_velocity(world, entity);
+        let up = orientation.up();
 
-        // Convert local intent to world velocity
-        let local_intent = intent.effective();
-        let desired_velocity = orientation.to_world(local_intent) * config.max_speed;
+        // Get current vertical velocity
+        let current_vertical = current_velocity.dot(up);
 
-        // Full air control for flying
-        let accel = config.acceleration;
+        // Desired vertical speed based on intent
+        let desired_vertical = intent.effective() * config.max_speed;
+
+        // Base acceleration
+        let mut accel = config.acceleration;
+
+        // Boost upward propulsion by gravity magnitude to help counteract it
+        if intent.direction > 0.0 {
+            accel += controller.gravity.length();
+        }
 
         // Calculate velocity change
-        let velocity_diff = desired_velocity - current_velocity;
+        let velocity_diff = desired_vertical - current_vertical;
         let max_change = accel * dt;
+        let change = velocity_diff.clamp(-max_change, max_change);
 
-        let change = if velocity_diff.length_squared() > max_change * max_change {
-            velocity_diff.normalize() * max_change
-        } else {
-            velocity_diff
-        };
+        // Apply the vertical velocity change while preserving horizontal
+        let right = orientation.right();
+        let horizontal_velocity = current_velocity.dot(right);
+        let new_vertical = current_vertical + change;
 
-        // Apply friction when no input
-        let friction_multiplier = if !intent.is_active() {
-            1.0 - config.friction
-        } else {
-            1.0
-        };
-
-        let new_velocity = (current_velocity + change) * friction_multiplier;
+        let new_velocity = right * horizontal_velocity + up * new_vertical;
         B::set_velocity(world, entity, new_velocity);
     }
 }
 
 /// Apply jump impulse when requested.
 ///
+/// Jumping requires being grounded (or within coyote time).
 /// Uses the CharacterController's gravity to calculate jump counter force.
 pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
     let time = world
@@ -286,7 +295,6 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
                 &JumpRequest,
             )>()
             .iter(world)
-            .filter(|(_, _, _, controller, _)| controller.is_walking())
             .map(|(e, config, orientation, controller, jump)| {
                 let can_jump = jump.is_valid(time, config.jump_buffer_time)
                     && (controller.is_grounded

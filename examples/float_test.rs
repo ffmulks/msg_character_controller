@@ -121,7 +121,7 @@ fn setup(mut commands: Commands) {
         ))
         .insert((
             // Character controller with explicit float height and gravity
-            CharacterController::walking_with_gravity(Vec2::new(0.0, -980.0)),
+            CharacterController::with_gravity(Vec2::new(0.0, -980.0)),
             ControllerConfig::player()
                 .with_float_height(15.0) // Should float 15 units above ground
                 .with_spring(20000.0, 500.0) // VERY strong spring

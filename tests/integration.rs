@@ -51,7 +51,7 @@ fn spawn_character_with_config(app: &mut App, position: Vec2, config: Controller
         .spawn((
             transform,
             GlobalTransform::from(transform),
-            CharacterController::walking(),
+            CharacterController::new(),
             config,
             WalkIntent::default(),
             JumpRequest::default(),
@@ -73,7 +73,7 @@ fn spawn_oriented_character(
         .spawn((
             transform,
             GlobalTransform::from(transform),
-            CharacterController::walking(),
+            CharacterController::new(),
             ControllerConfig::default(),
             orientation,
             WalkIntent::default(),
@@ -618,7 +618,7 @@ mod upright_torque {
             .spawn((
                 transform,
                 GlobalTransform::from(transform),
-                CharacterController::walking(),
+                CharacterController::new(),
                 ControllerConfig::default()
                     .with_upright_torque(500.0, 50.0)
                     .with_upright_target_angle(0.0),
@@ -730,7 +730,7 @@ mod gravity {
                 .spawn((
                     transform,
                     GlobalTransform::from(transform),
-                    CharacterController::walking_with_gravity(Vec2::new(0.0, -500.0)), // Custom gravity
+                    CharacterController::with_gravity(Vec2::new(0.0, -500.0)), // Custom gravity
                     ControllerConfig::default(),
                     WalkIntent::default(),
                     JumpRequest::default(),
@@ -831,7 +831,7 @@ mod collision_layers {
                 .spawn((
                     transform,
                     GlobalTransform::from(transform),
-                    CharacterController::walking(),
+                    CharacterController::new(),
                     ControllerConfig::default(),
                     WalkIntent::default(),
                     JumpRequest::default(),
@@ -850,7 +850,7 @@ mod collision_layers {
                 .spawn((
                     transform,
                     GlobalTransform::from(transform),
-                    CharacterController::walking(),
+                    CharacterController::new(),
                     ControllerConfig::default(),
                     WalkIntent::default(),
                     JumpRequest::default(),

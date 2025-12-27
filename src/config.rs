@@ -96,16 +96,6 @@ impl CharacterOrientation {
     }
 }
 
-/// Controller operating mode.
-#[derive(Reflect, Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub enum ControllerMode {
-    /// Ground-based movement with floating spring and gravity.
-    #[default]
-    Walking,
-    /// Free 2D movement ignoring gravity.
-    Flying,
-}
-
 /// Core character controller component.
 ///
 /// This is the **central hub** for all character controller state.
@@ -120,9 +110,6 @@ pub enum ControllerMode {
 #[derive(Component, Reflect, Debug, Clone)]
 #[reflect(Component)]
 pub struct CharacterController {
-    /// Current mode of the controller.
-    pub mode: ControllerMode,
-
     // === Ground Contact State (RESULT) ===
     /// Whether the character is grounded (standing on walkable ground).
     /// True when ground is detected within `float_height` from the character.
@@ -173,7 +160,6 @@ pub struct CharacterController {
 impl Default for CharacterController {
     fn default() -> Self {
         Self {
-            mode: ControllerMode::Walking,
             // Ground contact (RESULT)
             is_grounded: false,
             ground_normal: Vec2::Y,
@@ -201,42 +187,14 @@ impl Default for CharacterController {
 }
 
 impl CharacterController {
-    /// Create a new walking controller with default gravity.
-    pub fn walking() -> Self {
-        Self {
-            mode: ControllerMode::Walking,
-            ..default()
-        }
+    /// Create a new controller with default gravity.
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// Create a new walking controller with custom gravity.
-    pub fn walking_with_gravity(gravity: Vec2) -> Self {
-        Self {
-            mode: ControllerMode::Walking,
-            gravity,
-            ..default()
-        }
-    }
-
-    /// Create a new flying controller.
-    pub fn flying() -> Self {
-        Self {
-            mode: ControllerMode::Flying,
-            gravity: Vec2::ZERO,
-            ..default()
-        }
-    }
-
-    /// Check if the controller is in walking mode.
-    #[inline]
-    pub fn is_walking(&self) -> bool {
-        matches!(self.mode, ControllerMode::Walking)
-    }
-
-    /// Check if the controller is in flying mode.
-    #[inline]
-    pub fn is_flying(&self) -> bool {
-        matches!(self.mode, ControllerMode::Flying)
+    /// Create a new controller with custom gravity.
+    pub fn with_gravity(gravity: Vec2) -> Self {
+        Self { gravity, ..default() }
     }
 
     /// Set the gravity vector.
@@ -502,18 +460,6 @@ impl ControllerConfig {
         }
     }
 
-    /// Create a config optimized for flying characters.
-    pub fn flying() -> Self {
-        Self {
-            spring_strength: 0.0,
-            spring_damping: 0.0,
-            friction: 0.05,
-            air_control: 1.0,
-            upright_torque_enabled: false,
-            ..default()
-        }
-    }
-
     /// Builder: set float height.
     pub fn with_float_height(mut self, height: f32) -> Self {
         self.float_height = height;
@@ -669,29 +615,22 @@ mod tests {
     }
 
     #[test]
-    fn controller_walking_mode() {
-        let controller = CharacterController::walking();
-        assert!(controller.is_walking());
-        assert!(!controller.is_flying());
+    fn controller_new() {
+        let controller = CharacterController::new();
+        assert!(!controller.is_grounded);
+        assert_eq!(controller.gravity, Vec2::new(0.0, -980.0));
     }
 
     #[test]
-    fn controller_flying_mode() {
-        let controller = CharacterController::flying();
-        assert!(controller.is_flying());
-        assert!(!controller.is_walking());
-    }
-
-    #[test]
-    fn controller_walking_with_gravity() {
+    fn controller_with_gravity() {
         let gravity = Vec2::new(0.0, -500.0);
-        let controller = CharacterController::walking_with_gravity(gravity);
+        let controller = CharacterController::with_gravity(gravity);
         assert_eq!(controller.gravity, gravity);
     }
 
     #[test]
     fn controller_touching_wall() {
-        let mut controller = CharacterController::walking();
+        let mut controller = CharacterController::new();
         assert!(!controller.touching_wall());
 
         controller.touching_left_wall = true;

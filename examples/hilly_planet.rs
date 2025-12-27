@@ -4,16 +4,16 @@
 //! - Uses 16 pixels per meter units
 //! - Spherical planet with procedural hilly surface
 //! - Realistic gravity: 9.81 * 16 = 156.96 px/s²
-//! - Flying mode does NOT disable gravity, it only changes what up/down do
+//! - Propulsion system with gravity compensation for upward thrust
 //!
 //! ## Controls
 //! - **A/D** or **Left/Right**: Move horizontally
-//! - **W/Up**: Jump (walking) / Move up relative to planet (flying)
-//! - **S/Down**: Move down relative to planet (flying only)
-//! - **Space** or **Shift**: Toggle between Flying and Walking modes
+//! - **W/Up**: Jump (single impulse when grounded)
+//! - **Space** (hold): Propulsion (thrust upward with gravity compensation)
+//! - **S/Down** (hold): Propulsion (thrust downward)
 //!
-//! In flying mode, gravity still pulls you toward the planet center,
-//! but you can thrust up/down relative to your current orientation.
+//! The propulsion system provides vertical thrust that is automatically
+//! boosted by gravity magnitude to help counteract it when going up.
 
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
@@ -39,9 +39,6 @@ const PLANET_BASE_RADIUS: f32 = 300.0;
 const HILL_AMPLITUDE: f32 = 30.0; // Height variation for hills
 const HILL_FREQUENCY: usize = 12; // Number of major hills around the planet
 const PLANET_SEGMENTS: usize = 96; // Segments for planet surface
-
-// Fly thrust strength (how fast you can fly up/down)
-const FLY_THRUST: f32 = 200.0;
 
 // ==================== Components ====================
 
@@ -98,10 +95,7 @@ fn main() {
             )
                 .before(msg_character_controller::systems::update_ground_detection::<Rapier2dBackend>),
         )
-        .add_systems(
-            Update,
-            (handle_input, toggle_mode, camera_follow, display_mode_ui),
-        )
+        .add_systems(Update, (handle_input, camera_follow))
         .run();
 }
 
@@ -119,7 +113,7 @@ fn setup(mut commands: Commands) {
 
     // UI instructions
     commands.spawn((
-        Text::new("A/D or Left/Right: Move | W/Up: Jump/Fly Up | S/Down: Fly Down | Space/Shift: Toggle Mode"),
+        Text::new("A/D: Move | W: Jump | Space: Propel Up | S: Propel Down"),
         TextFont {
             font_size: 18.0,
             ..default()
@@ -131,23 +125,6 @@ fn setup(mut commands: Commands) {
             left: Val::Px(10.0),
             ..default()
         },
-    ));
-
-    // Mode display UI
-    commands.spawn((
-        Text::new("Mode: Walking"),
-        TextFont {
-            font_size: 24.0,
-            ..default()
-        },
-        TextColor(Color::srgb(0.2, 0.8, 0.2)),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(40.0),
-            left: Val::Px(10.0),
-            ..default()
-        },
-        ModeDisplay,
     ));
 
     // Physics info
@@ -169,9 +146,9 @@ fn setup(mut commands: Commands) {
         },
     ));
 
-    // Flying info
+    // Propulsion info
     commands.spawn((
-        Text::new("Flying: Gravity still applies! Use W/S to thrust."),
+        Text::new("Hold Space to propel upward (with gravity compensation)"),
         TextFont {
             font_size: 16.0,
             ..default()
@@ -325,14 +302,14 @@ fn spawn_player(commands: &mut Commands) {
         ))
         .insert((
             // Character controller
-            CharacterController::walking(),
+            CharacterController::new(),
             ControllerConfig::player()
                 .with_float_height(PLAYER_HALF_HEIGHT)
                 .with_ground_cast_width(PLAYER_RADIUS)
                 .with_upright_torque_enabled(false), // We handle rotation via orientation
             initial_orientation,
             WalkIntent::default(),
-            FlyIntent::default(),
+            PropulsionIntent::default(),
             JumpRequest::default(),
         ))
         .insert((
@@ -355,21 +332,9 @@ fn spawn_player(commands: &mut Commands) {
 fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    mut query: Query<
-        (
-            &CharacterController,
-            &CharacterOrientation,
-            &mut WalkIntent,
-            &mut FlyIntent,
-            &mut JumpRequest,
-            &mut Velocity,
-        ),
-        With<Player>,
-    >,
+    mut query: Query<(&mut WalkIntent, &mut PropulsionIntent, &mut JumpRequest), With<Player>>,
 ) {
-    for (controller, orientation, mut walk_intent, mut fly_intent, mut jump_request, mut velocity) in
-        &mut query
-    {
+    for (mut walk_intent, mut propulsion, mut jump_request) in &mut query {
         // Horizontal input (A/D or Left/Right)
         let mut horizontal = 0.0;
         if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
@@ -379,52 +344,21 @@ fn handle_input(
             horizontal += 1.0;
         }
 
-        // Vertical input (W/S or Up/Down)
+        walk_intent.set(horizontal);
+
+        // Vertical propulsion (Space = up, S/Down = down)
         let mut vertical = 0.0;
-        if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
+        if keyboard.pressed(KeyCode::Space) {
             vertical += 1.0;
         }
         if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
             vertical -= 1.0;
         }
+        propulsion.set(vertical);
 
-        if controller.is_walking() {
-            // Walking mode: horizontal movement + jump
-            walk_intent.set(horizontal);
-
-            // Jump on W or Up (just pressed)
-            if keyboard.just_pressed(KeyCode::KeyW) || keyboard.just_pressed(KeyCode::ArrowUp) {
-                jump_request.request(time.elapsed_secs());
-            }
-        } else {
-            // Flying mode: horizontal movement via FlyIntent, vertical via direct thrust
-            // This allows up/down to work against gravity
-            fly_intent.set(Vec2::new(horizontal, 0.0));
-
-            // Apply vertical thrust in the character's local up direction
-            // This fights against gravity when going up, assists when going down
-            if vertical != 0.0 {
-                let thrust_dir = orientation.up() * vertical;
-                velocity.linvel += thrust_dir * FLY_THRUST * time.delta_secs();
-            }
-        }
-    }
-}
-
-fn toggle_mode(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut query: Query<&mut CharacterController, With<Player>>,
-) {
-    if keyboard.just_pressed(KeyCode::Space)
-        || keyboard.just_pressed(KeyCode::ShiftLeft)
-        || keyboard.just_pressed(KeyCode::ShiftRight)
-    {
-        for mut controller in &mut query {
-            if controller.is_walking() {
-                controller.mode = msg_character_controller::config::ControllerMode::Flying;
-            } else {
-                controller.mode = msg_character_controller::config::ControllerMode::Walking;
-            }
+        // Jump on W or Up (just pressed)
+        if keyboard.just_pressed(KeyCode::KeyW) || keyboard.just_pressed(KeyCode::ArrowUp) {
+            jump_request.request(time.elapsed_secs());
         }
     }
 }
@@ -452,34 +386,20 @@ fn update_player_orientation(
 }
 
 /// Applies radial gravity toward the planet center.
-/// IMPORTANT: This applies in BOTH walking AND flying modes!
-/// Flying just gives you thrust to counteract gravity, it doesn't disable it.
+/// Gravity is applied when the character is not grounded.
 fn apply_planetary_gravity(
     planet: Res<PlanetConfig>,
     time: Res<Time<Fixed>>,
     mut query: Query<
-        (
-            &Transform,
-            &CharacterController,
-            &mut Velocity,
-            Option<&Grounded>,
-        ),
+        (&Transform, &mut Velocity, Option<&Grounded>),
         With<AffectedByPlanetaryGravity>,
     >,
 ) {
     let dt = time.delta_secs();
 
-    for (transform, controller, mut velocity, grounded) in &mut query {
-        // Apply gravity when:
-        // - Walking mode AND not grounded (falling)
-        // - Flying mode ALWAYS (gravity doesn't turn off, you have to thrust against it)
-        let should_apply_gravity = if controller.is_walking() {
-            grounded.is_none() // Only when airborne in walking mode
-        } else {
-            true // Always in flying mode
-        };
-
-        if should_apply_gravity {
+    for (transform, mut velocity, grounded) in &mut query {
+        // Apply gravity when not grounded
+        if grounded.is_none() {
             let position = transform.translation.xy();
             let to_center = planet.center - position;
             let gravity_dir = to_center.normalize_or_zero();
@@ -515,28 +435,4 @@ fn camera_follow(
     let smoothed = current.lerp(camera_target, 0.05);
     camera_transform.translation.x = smoothed.x;
     camera_transform.translation.y = smoothed.y;
-}
-
-// ==================== UI ====================
-
-#[derive(Component)]
-struct ModeDisplay;
-
-fn display_mode_ui(
-    player_query: Query<&CharacterController, With<Player>>,
-    mut text_query: Query<(&mut Text, &mut TextColor), With<ModeDisplay>>,
-) {
-    let Ok(controller) = player_query.single() else {
-        return;
-    };
-
-    for (mut text, mut color) in &mut text_query {
-        if controller.is_walking() {
-            **text = "Mode: Walking".to_string();
-            color.0 = Color::srgb(0.2, 0.8, 0.2);
-        } else {
-            **text = "Mode: Flying (gravity still applies!)".to_string();
-            color.0 = Color::srgb(0.9, 0.6, 0.2);
-        }
-    }
 }

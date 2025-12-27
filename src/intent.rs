@@ -81,50 +81,60 @@ impl WalkIntent {
     }
 }
 
-/// Flying movement intent (2D axis).
+/// Vertical propulsion intent (for jetpacks, thrusters, etc.).
 ///
-/// For flying characters, this controls movement in both horizontal and
-/// vertical axes. Values should be in the range -1.0 to 1.0 for each axis.
+/// This controls vertical propulsion independently from walking.
+/// Positive values thrust upward, negative values thrust downward.
+/// When thrusting upward, the propulsion is automatically strengthened
+/// by the magnitude of gravity to help counteract it.
+///
+/// # Example
+///
+/// ```rust
+/// use msg_character_controller::prelude::*;
+///
+/// // Create intent thrusting upward
+/// let mut intent = PropulsionIntent::new(1.0);
+/// assert!(intent.is_active());
+///
+/// // Thrust downward
+/// intent.set(-1.0);
+/// assert_eq!(intent.direction, -1.0);
+///
+/// // Clear to stop
+/// intent.clear();
+/// assert!(!intent.is_active());
+/// ```
 #[derive(Component, Reflect, Debug, Clone, Copy)]
 #[reflect(Component)]
-pub struct FlyIntent {
-    /// Movement direction (x = horizontal, y = vertical).
-    pub direction: Vec2,
+pub struct PropulsionIntent {
+    /// Vertical propulsion intent (-1.0 = down, 1.0 = up).
+    pub direction: f32,
     /// Speed multiplier (0.0 to 1.0).
     pub speed_multiplier: f32,
 }
 
-impl Default for FlyIntent {
+impl Default for PropulsionIntent {
     fn default() -> Self {
         Self {
-            direction: Vec2::ZERO,
-            speed_multiplier: 1.0, // Default to full speed so set() works immediately
+            direction: 0.0,
+            speed_multiplier: 1.0,
         }
     }
 }
 
-impl FlyIntent {
-    /// Create a new fly intent with the given direction.
-    pub fn new(direction: Vec2) -> Self {
+impl PropulsionIntent {
+    /// Create a new propulsion intent with the given direction.
+    pub fn new(direction: f32) -> Self {
         Self {
-            direction: direction.clamp(Vec2::NEG_ONE, Vec2::ONE),
+            direction: direction.clamp(-1.0, 1.0),
             speed_multiplier: 1.0,
         }
     }
 
-    /// Set the movement direction.
-    pub fn set(&mut self, direction: Vec2) {
-        self.direction = direction.clamp(Vec2::NEG_ONE, Vec2::ONE);
-    }
-
-    /// Set just the horizontal component.
-    pub fn set_horizontal(&mut self, x: f32) {
-        self.direction.x = x.clamp(-1.0, 1.0);
-    }
-
-    /// Set just the vertical component.
-    pub fn set_vertical(&mut self, y: f32) {
-        self.direction.y = y.clamp(-1.0, 1.0);
+    /// Set the propulsion direction (-1.0 = down, 1.0 = up).
+    pub fn set(&mut self, direction: f32) {
+        self.direction = direction.clamp(-1.0, 1.0);
     }
 
     /// Set the speed multiplier.
@@ -132,18 +142,18 @@ impl FlyIntent {
         self.speed_multiplier = multiplier.clamp(0.0, 1.0);
     }
 
-    /// Clear the intent (stop moving).
+    /// Clear the intent (stop propulsion).
     pub fn clear(&mut self) {
-        self.direction = Vec2::ZERO;
+        self.direction = 0.0;
     }
 
     /// Check if there is active input.
     pub fn is_active(&self) -> bool {
-        self.direction.length_squared() > 0.001
+        self.direction.abs() > 0.001
     }
 
     /// Get the effective direction with speed multiplier applied.
-    pub fn effective(&self) -> Vec2 {
+    pub fn effective(&self) -> f32 {
         self.direction * self.speed_multiplier
     }
 }
@@ -266,64 +276,61 @@ mod tests {
         assert_eq!(intent.effective(), -0.5);
     }
 
-    // ==================== FlyIntent Tests ====================
+    // ==================== PropulsionIntent Tests ====================
 
     #[test]
-    fn fly_intent_new() {
-        let intent = FlyIntent::new(Vec2::new(0.5, -0.5));
-        assert_eq!(intent.direction, Vec2::new(0.5, -0.5));
+    fn propulsion_intent_new() {
+        let intent = PropulsionIntent::new(0.5);
+        assert_eq!(intent.direction, 0.5);
         assert_eq!(intent.speed_multiplier, 1.0);
     }
 
     #[test]
-    fn fly_intent_clamps_direction() {
-        let intent = FlyIntent::new(Vec2::new(5.0, -5.0));
-        assert_eq!(intent.direction, Vec2::new(1.0, -1.0));
+    fn propulsion_intent_clamps_direction() {
+        let intent = PropulsionIntent::new(5.0);
+        assert_eq!(intent.direction, 1.0);
+
+        let intent = PropulsionIntent::new(-5.0);
+        assert_eq!(intent.direction, -1.0);
     }
 
     #[test]
-    fn fly_intent_set_horizontal() {
-        let mut intent = FlyIntent::default();
-        intent.set_horizontal(0.8);
-        assert_eq!(intent.direction.x, 0.8);
-        assert_eq!(intent.direction.y, 0.0);
+    fn propulsion_intent_set() {
+        let mut intent = PropulsionIntent::default();
+        intent.set(0.8);
+        assert_eq!(intent.direction, 0.8);
+
+        intent.set(-0.6);
+        assert_eq!(intent.direction, -0.6);
     }
 
     #[test]
-    fn fly_intent_set_vertical() {
-        let mut intent = FlyIntent::default();
-        intent.set_vertical(-0.6);
-        assert_eq!(intent.direction.y, -0.6);
-        assert_eq!(intent.direction.x, 0.0);
-    }
-
-    #[test]
-    fn fly_intent_is_active() {
-        let mut intent = FlyIntent::default();
+    fn propulsion_intent_is_active() {
+        let mut intent = PropulsionIntent::default();
         assert!(!intent.is_active());
 
-        intent.set(Vec2::new(0.5, 0.5));
+        intent.set(0.5);
         assert!(intent.is_active());
 
-        intent.set(Vec2::new(0.0001, 0.0001)); // Below threshold
+        intent.set(0.0001); // Below threshold
         assert!(!intent.is_active());
     }
 
     #[test]
-    fn fly_intent_clear() {
-        let mut intent = FlyIntent::new(Vec2::ONE);
+    fn propulsion_intent_clear() {
+        let mut intent = PropulsionIntent::new(1.0);
         assert!(intent.is_active());
 
         intent.clear();
         assert!(!intent.is_active());
-        assert_eq!(intent.direction, Vec2::ZERO);
+        assert_eq!(intent.direction, 0.0);
     }
 
     #[test]
-    fn fly_intent_effective() {
-        let mut intent = FlyIntent::new(Vec2::new(1.0, -1.0));
+    fn propulsion_intent_effective() {
+        let mut intent = PropulsionIntent::new(-1.0);
         intent.set_speed(0.5);
-        assert_eq!(intent.effective(), Vec2::new(0.5, -0.5));
+        assert_eq!(intent.effective(), -0.5);
     }
 
     // ==================== JumpRequest Tests ====================

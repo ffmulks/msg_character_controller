@@ -7,8 +7,10 @@
 //! - A triangle slope on the right
 //!
 //! ## Controls
-//! - **WASD** or **Arrow Keys**: Move (W/Up = Jump)
-//! - **Spacebar** or **Shift**: Toggle between Flying and Walking modes
+//! - **A/D** or **Left/Right**: Move horizontally
+//! - **W/Up**: Jump
+//! - **Space** (hold): Propulsion (fly upward)
+//! - **S/Down** (hold): Propulsion (fly downward)
 //!
 //! The camera follows the player.
 
@@ -59,16 +61,7 @@ fn main() {
         .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
         // Systems
         .add_systems(Startup, setup)
-        .add_systems(
-            Update,
-            (
-                handle_input,
-                toggle_mode,
-                apply_gravity,
-                camera_follow,
-                display_mode_ui,
-            ),
-        )
+        .add_systems(Update, (handle_input, apply_gravity, camera_follow))
         .run();
 }
 
@@ -88,7 +81,7 @@ fn setup(mut commands: Commands) {
 
     // UI instructions
     commands.spawn((
-        Text::new("WASD/Arrows: Move | W/Up: Jump | Space/Shift: Toggle Fly/Walk"),
+        Text::new("A/D: Move | W: Jump | Space: Propel Up | S: Propel Down"),
         TextFont {
             font_size: 20.0,
             ..default()
@@ -100,23 +93,6 @@ fn setup(mut commands: Commands) {
             left: Val::Px(10.0),
             ..default()
         },
-    ));
-
-    // Mode display UI
-    commands.spawn((
-        Text::new("Mode: Walking"),
-        TextFont {
-            font_size: 24.0,
-            ..default()
-        },
-        TextColor(Color::srgb(0.2, 0.8, 0.2)),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(40.0),
-            left: Val::Px(10.0),
-            ..default()
-        },
-        ModeDisplay,
     ));
 }
 
@@ -227,14 +203,14 @@ fn spawn_player(commands: &mut Commands) {
         ))
         .insert((
             // Character controller with gravity
-            CharacterController::walking_with_gravity(Vec2::new(0.0, -980.0)),
+            CharacterController::with_gravity(Vec2::new(0.0, -980.0)),
             ControllerConfig::player()
                 // Capsule total half-height = half_length + radius = 4 + 6 = 10
                 // We want to float 5 units above ground, so total = 10 + 5 = 15
                 .with_float_height(15.0)
                 .with_ground_cast_width(PLAYER_RADIUS),
             WalkIntent::default(),
-            FlyIntent::default(),
+            PropulsionIntent::default(),
             JumpRequest::default(),
         ))
         .insert((
@@ -258,17 +234,9 @@ fn spawn_player(commands: &mut Commands) {
 fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    mut query: Query<
-        (
-            &CharacterController,
-            &mut WalkIntent,
-            &mut FlyIntent,
-            &mut JumpRequest,
-        ),
-        With<Player>,
-    >,
+    mut query: Query<(&mut WalkIntent, &mut PropulsionIntent, &mut JumpRequest), With<Player>>,
 ) {
-    for (controller, mut walk_intent, mut fly_intent, mut jump_request) in &mut query {
+    for (mut walk_intent, mut propulsion, mut jump_request) in &mut query {
         // Horizontal input (A/D or Left/Right)
         let mut horizontal = 0.0;
         if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
@@ -278,44 +246,21 @@ fn handle_input(
             horizontal += 1.0;
         }
 
-        // Vertical input for flying (W/S or Up/Down)
+        walk_intent.set(horizontal);
+
+        // Vertical propulsion (Space = up, S/Down = down)
         let mut vertical = 0.0;
-        if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
+        if keyboard.pressed(KeyCode::Space) {
             vertical += 1.0;
         }
         if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
             vertical -= 1.0;
         }
+        propulsion.set(vertical);
 
-        if controller.is_walking() {
-            // Walking mode: horizontal movement + jump
-            walk_intent.set(horizontal);
-
-            // Jump on W or Up (just pressed)
-            if keyboard.just_pressed(KeyCode::KeyW) || keyboard.just_pressed(KeyCode::ArrowUp) {
-                jump_request.request(time.elapsed_secs());
-            }
-        } else {
-            // Flying mode: 2D movement
-            fly_intent.set(Vec2::new(horizontal, vertical));
-        }
-    }
-}
-
-fn toggle_mode(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut query: Query<&mut CharacterController, With<Player>>,
-) {
-    if keyboard.just_pressed(KeyCode::Space)
-        || keyboard.just_pressed(KeyCode::ShiftLeft)
-        || keyboard.just_pressed(KeyCode::ShiftRight)
-    {
-        for mut controller in &mut query {
-            if controller.is_walking() {
-                controller.mode = msg_character_controller::config::ControllerMode::Flying;
-            } else {
-                controller.mode = msg_character_controller::config::ControllerMode::Walking;
-            }
+        // Jump on W or Up (just pressed)
+        if keyboard.just_pressed(KeyCode::KeyW) || keyboard.just_pressed(KeyCode::ArrowUp) {
+            jump_request.request(time.elapsed_secs());
         }
     }
 }
@@ -334,8 +279,8 @@ fn apply_gravity(
     let dt = time.delta_secs();
 
     for (controller, mut velocity, grounded) in &mut query {
-        // Only apply gravity in walking mode and when not grounded
-        if controller.is_walking() && grounded.is_none() {
+        // Only apply gravity when not grounded
+        if grounded.is_none() {
             velocity.linvel += controller.gravity * dt;
         }
     }
@@ -361,28 +306,4 @@ fn camera_follow(
     let smoothed = current.lerp(target, 0.1);
     camera_transform.translation.x = smoothed.x;
     camera_transform.translation.y = smoothed.y;
-}
-
-// ==================== UI ====================
-
-#[derive(Component)]
-struct ModeDisplay;
-
-fn display_mode_ui(
-    player_query: Query<&CharacterController, With<Player>>,
-    mut text_query: Query<(&mut Text, &mut TextColor), With<ModeDisplay>>,
-) {
-    let Ok(controller) = player_query.single() else {
-        return;
-    };
-
-    for (mut text, mut color) in &mut text_query {
-        if controller.is_walking() {
-            **text = "Mode: Walking".to_string();
-            color.0 = Color::srgb(0.2, 0.8, 0.2);
-        } else {
-            **text = "Mode: Flying".to_string();
-            color.0 = Color::srgb(0.2, 0.6, 0.9);
-        }
-    }
 }

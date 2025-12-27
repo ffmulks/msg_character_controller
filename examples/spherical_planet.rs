@@ -7,8 +7,10 @@
 //! - Dynamic orientation that adjusts to the planet's surface
 //!
 //! ## Controls
-//! - **WASD** or **Arrow Keys**: Move (W/Up = Jump)
-//! - **Spacebar** or **Shift**: Toggle between Flying and Walking modes
+//! - **A/D** or **Left/Right**: Move horizontally
+//! - **W/Up**: Jump
+//! - **Space** (hold): Propulsion (fly up relative to planet)
+//! - **S/Down** (hold): Propulsion (fly down toward planet)
 //!
 //! The camera follows the player and the character's "up" direction
 //! always points away from the planet center.
@@ -84,10 +86,7 @@ fn main() {
             (update_player_orientation, apply_planetary_gravity)
                 .before(msg_character_controller::systems::apply_floating_spring::<Rapier2dBackend>),
         )
-        .add_systems(
-            Update,
-            (handle_input, toggle_mode, camera_follow, display_mode_ui),
-        )
+        .add_systems(Update, (handle_input, camera_follow))
         .run();
 }
 
@@ -111,7 +110,7 @@ fn setup(mut commands: Commands) {
 
     // UI instructions
     commands.spawn((
-        Text::new("WASD/Arrows: Move | W/Up: Jump | Space/Shift: Toggle Fly/Walk"),
+        Text::new("A/D: Move | W: Jump | Space: Propel Up | S: Propel Down"),
         TextFont {
             font_size: 20.0,
             ..default()
@@ -123,23 +122,6 @@ fn setup(mut commands: Commands) {
             left: Val::Px(10.0),
             ..default()
         },
-    ));
-
-    // Mode display UI
-    commands.spawn((
-        Text::new("Mode: Walking"),
-        TextFont {
-            font_size: 24.0,
-            ..default()
-        },
-        TextColor(Color::srgb(0.2, 0.8, 0.2)),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(40.0),
-            left: Val::Px(10.0),
-            ..default()
-        },
-        ModeDisplay,
     ));
 
     // Planet info
@@ -254,14 +236,14 @@ fn spawn_player(commands: &mut Commands) {
         ))
         .insert((
             // Character controller
-            CharacterController::walking(),
+            CharacterController::new(),
             ControllerConfig::player()
                 .with_float_height(PLAYER_HALF_HEIGHT)
                 .with_ground_cast_width(PLAYER_RADIUS)
                 .with_upright_torque_enabled(false), // We handle rotation via orientation
             initial_orientation,
             WalkIntent::default(),
-            FlyIntent::default(),
+            PropulsionIntent::default(),
             JumpRequest::default(),
         ))
         .insert((
@@ -284,17 +266,9 @@ fn spawn_player(commands: &mut Commands) {
 fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    mut query: Query<
-        (
-            &CharacterController,
-            &mut WalkIntent,
-            &mut FlyIntent,
-            &mut JumpRequest,
-        ),
-        With<Player>,
-    >,
+    mut query: Query<(&mut WalkIntent, &mut PropulsionIntent, &mut JumpRequest), With<Player>>,
 ) {
-    for (controller, mut walk_intent, mut fly_intent, mut jump_request) in &mut query {
+    for (mut walk_intent, mut propulsion, mut jump_request) in &mut query {
         // Horizontal input (A/D or Left/Right)
         let mut horizontal = 0.0;
         if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
@@ -304,44 +278,21 @@ fn handle_input(
             horizontal += 1.0;
         }
 
-        // Vertical input for flying (W/S or Up/Down)
+        walk_intent.set(horizontal);
+
+        // Vertical propulsion (Space = up, S/Down = down)
         let mut vertical = 0.0;
-        if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
+        if keyboard.pressed(KeyCode::Space) {
             vertical += 1.0;
         }
         if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
             vertical -= 1.0;
         }
+        propulsion.set(vertical);
 
-        if controller.is_walking() {
-            // Walking mode: horizontal movement + jump
-            walk_intent.set(horizontal);
-
-            // Jump on W or Up (just pressed)
-            if keyboard.just_pressed(KeyCode::KeyW) || keyboard.just_pressed(KeyCode::ArrowUp) {
-                jump_request.request(time.elapsed_secs());
-            }
-        } else {
-            // Flying mode: 2D movement (world-relative, not orientation-relative)
-            fly_intent.set(Vec2::new(horizontal, vertical));
-        }
-    }
-}
-
-fn toggle_mode(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut query: Query<&mut CharacterController, With<Player>>,
-) {
-    if keyboard.just_pressed(KeyCode::Space)
-        || keyboard.just_pressed(KeyCode::ShiftLeft)
-        || keyboard.just_pressed(KeyCode::ShiftRight)
-    {
-        for mut controller in &mut query {
-            if controller.is_walking() {
-                controller.mode = msg_character_controller::config::ControllerMode::Flying;
-            } else {
-                controller.mode = msg_character_controller::config::ControllerMode::Walking;
-            }
+        // Jump on W or Up (just pressed)
+        if keyboard.just_pressed(KeyCode::KeyW) || keyboard.just_pressed(KeyCode::ArrowUp) {
+            jump_request.request(time.elapsed_secs());
         }
     }
 }
@@ -373,20 +324,15 @@ fn apply_planetary_gravity(
     planet: Res<PlanetConfig>,
     time: Res<Time<Fixed>>,
     mut query: Query<
-        (
-            &Transform,
-            &CharacterController,
-            &mut Velocity,
-            Option<&Grounded>,
-        ),
+        (&Transform, &mut Velocity, Option<&Grounded>),
         With<AffectedByPlanetaryGravity>,
     >,
 ) {
     let dt = time.delta_secs();
 
-    for (transform, controller, mut velocity, grounded) in &mut query {
-        // Only apply gravity in walking mode and when not grounded
-        if controller.is_walking() && grounded.is_none() {
+    for (transform, mut velocity, grounded) in &mut query {
+        // Only apply gravity when not grounded
+        if grounded.is_none() {
             let position = transform.translation.xy();
             let to_center = planet.center - position;
             let gravity_dir = to_center.normalize_or_zero();
@@ -422,28 +368,4 @@ fn camera_follow(
     let smoothed = current.lerp(camera_target, 0.05);
     camera_transform.translation.x = smoothed.x;
     camera_transform.translation.y = smoothed.y;
-}
-
-// ==================== UI ====================
-
-#[derive(Component)]
-struct ModeDisplay;
-
-fn display_mode_ui(
-    player_query: Query<&CharacterController, With<Player>>,
-    mut text_query: Query<(&mut Text, &mut TextColor), With<ModeDisplay>>,
-) {
-    let Ok(controller) = player_query.single() else {
-        return;
-    };
-
-    for (mut text, mut color) in &mut text_query {
-        if controller.is_walking() {
-            **text = "Mode: Walking".to_string();
-            color.0 = Color::srgb(0.2, 0.8, 0.2);
-        } else {
-            **text = "Mode: Flying".to_string();
-            color.0 = Color::srgb(0.2, 0.6, 0.9);
-        }
-    }
 }
