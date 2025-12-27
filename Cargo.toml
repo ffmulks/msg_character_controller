@@ -1,0 +1,23 @@
+[package]
+name = "msg_character_controller"
+version = "0.0.1"
+edition = "2024"
+authors = ["ffmulks <63452434+ffmulks@users.noreply.github.com>"]
+description = "Advanced 2D floating rigidbody character controller with physics backend abstraction"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ffmulks/msg_character_controller"
+
+[dependencies]
+bevy = { version = "0.16", default-features = false, features = ["bevy_render", "bevy_asset"] }
+
+[dev-dependencies]
+bevy_rapier2d = { version = "0.31.0", features = ["simd-stable", "debug-render-2d"] }
+
+[features]
+default = []
+rapier2d = ["dep:bevy_rapier2d"]
+
+[dependencies.bevy_rapier2d]
+version = "0.31.0"
+features = ["simd-stable", "debug-render-2d"]
+optional = true
