@@ -238,7 +238,9 @@ fn spawn_player(commands: &mut Commands) {
             // Character controller
             CharacterController::new(),
             ControllerConfig::player()
-                .with_float_height(PLAYER_HALF_HEIGHT)
+                // Capsule half-extent = half_length + radius = 4 + 6 = 10
+                // Float 5 units above ground, so total = 10 + 5 = 15
+                .with_float_height(PLAYER_HALF_HEIGHT / 2.0 + PLAYER_RADIUS + 5.0)
                 .with_ground_cast_width(PLAYER_RADIUS)
                 .with_upright_torque_enabled(false), // We handle rotation via orientation
             initial_orientation,
