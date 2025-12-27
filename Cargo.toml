@@ -47,3 +47,8 @@ required-features = ["examples"]
 name = "spherical_planet"
 path = "examples/spherical_planet.rs"
 required-features = ["examples"]
+
+[[example]]
+name = "float_test"
+path = "examples/float_test.rs"
+required-features = ["examples"]

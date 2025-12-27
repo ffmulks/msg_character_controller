@@ -247,33 +247,49 @@ pub fn update_wall_detection<B: CharacterPhysicsBackend>(world: &mut World) {
 
 /// Apply the floating spring force to maintain float height.
 pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, GroundInfo)> = world
+    // First, ensure all walking controllers have GroundInfo
+    let controllers: Vec<Entity> = world
+        .query::<(Entity, &CharacterController)>()
+        .iter(world)
+        .filter(|(_, controller)| controller.is_walking())
+        .map(|(e, _)| e)
+        .collect();
+
+    for entity in controllers {
+        if world.get::<GroundInfo>(entity).is_none() {
+            world.entity_mut(entity).insert(GroundInfo::default());
+        }
+    }
+
+    // Now query for entities with all required components
+    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, GroundInfo, Vec2)> = world
         .query::<(
             Entity,
             &CharacterController,
             &ControllerConfig,
             Option<&CharacterOrientation>,
             &GroundInfo,
+            Option<&crate::CharacterGravity>,
         )>()
         .iter(world)
-        .filter(|(_, controller, _, _, _)| controller.is_walking())
-        .map(|(e, _, config, orientation, ground)| {
+        .filter(|(_, controller, _, _, _, _)| controller.is_walking())
+        .map(|(e, _, config, orientation, ground, gravity)| {
             (
                 e,
                 *config,
                 orientation.copied().unwrap_or_default(),
                 *ground,
+                gravity.map(|g| g.0).unwrap_or(Vec2::new(0.0, -980.0)),
             )
         })
         .collect();
 
-    for (entity, config, orientation, ground) in entities {
+    for (entity, config, orientation, ground, gravity) in entities {
         if !ground.detected {
             continue;
         }
 
         let velocity = B::get_velocity(world, entity);
-        let gravity = B::get_gravity(world, entity);
         let up = orientation.up();
 
         // Calculate height error
@@ -282,8 +298,14 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         // Spring force: F = k * x - c * v
         // Where x is height error and v is vertical velocity (along up direction)
         let vertical_velocity = velocity.dot(up);
+        // Reduce damping when jumping upward to preserve jump momentum
+        let effective_damping = if vertical_velocity > 200.0 {
+            config.spring_damping * 0.1  // 10% damping when jumping
+        } else {
+            config.spring_damping
+        };
         let spring_force =
-            config.spring_strength * height_error - config.spring_damping * vertical_velocity;
+            config.spring_strength * height_error - effective_damping * vertical_velocity;
 
         // Apply force in the "up" direction
         let force = up * spring_force;
@@ -291,19 +313,29 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
 
         // Apply cling force when above float height but within cling distance
         // This helps the character stick to ground on bumpy terrain
+        // But skip if we're moving upward fast (probably jumping)
         if height_error < 0.0
             && ground.distance <= config.float_height + config.cling_distance
             && config.cling_strength > 0.0
+            && vertical_velocity < 100.0  // Don't cling if jumping upward
         {
             let cling_force = gravity * config.cling_strength;
             B::apply_force(world, entity, cling_force);
         }
 
-        // Apply extra gravity when going uphill
-        if ground.is_on_slope() && ground.slope_angle > 0.0 {
-            let extra_gravity = gravity * (config.uphill_gravity_multiplier - 1.0);
-            B::apply_force(world, entity, extra_gravity);
+        // Apply extra fall gravity when falling (velocity is in -UP direction)
+        // This makes the character fall faster, creating a more responsive feel
+        if vertical_velocity < 0.0 && config.extra_fall_gravity > 0.0 {
+            let extra_gravity_force = gravity * config.extra_fall_gravity;
+            B::apply_force(world, entity, extra_gravity_force);
         }
+
+        // Note: Uphill gravity multiplier disabled - it was causing issues
+        // The check for uphill vs downhill would need to consider movement direction
+        // if ground.is_on_slope() && is_moving_uphill {
+        //     let extra_gravity = gravity * (config.uphill_gravity_multiplier - 1.0);
+        //     B::apply_force(world, entity, extra_gravity);
+        // }
     }
 }
 

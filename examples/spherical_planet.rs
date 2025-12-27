@@ -95,10 +95,7 @@ fn main() {
 
 fn setup(mut commands: Commands) {
     // Camera
-    commands.spawn((
-        Camera2d,
-        Transform::from_xyz(0.0, PLANET_RADIUS + 200.0, 1000.0),
-    ));
+    commands.spawn((Camera2d, Transform::from_xyz(0.0, PLANET_RADIUS, 0.0)));
 
     // Spawn planet
     spawn_planet(&mut commands);

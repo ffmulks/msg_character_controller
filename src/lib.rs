@@ -41,6 +41,24 @@ pub mod intent;
 pub mod state;
 pub mod systems;
 
+/// Per-entity gravity vector component.
+///
+/// Attach this to your character to specify the gravity affecting it.
+/// This is essential for the floating spring system to work correctly.
+///
+/// # Example
+/// ```
+/// // For standard downward gravity
+/// commands.entity(player).insert(CharacterGravity(Vec2::new(0.0, -980.0)));
+///
+/// // For spherical planet (gravity towards center)
+/// let to_center = (planet_center - player_pos).normalize();
+/// commands.entity(player).insert(CharacterGravity(to_center * 980.0));
+/// ```
+#[derive(Component, Reflect, Debug, Clone, Copy, Default)]
+#[reflect(Component)]
+pub struct CharacterGravity(pub Vec2);
+
 #[cfg(feature = "rapier2d")]
 pub mod rapier;
 
@@ -55,6 +73,7 @@ pub mod prelude {
     pub use crate::intent::{FlyIntent, JumpRequest, WalkIntent};
     pub use crate::state::{Airborne, Grounded, TouchingWall};
     pub use crate::CharacterControllerPlugin;
+    pub use crate::CharacterGravity;
 
     #[cfg(feature = "rapier2d")]
     pub use crate::rapier::Rapier2dBackend;
@@ -109,6 +128,7 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
         app.register_type::<state::TouchingWall>();
         app.register_type::<detection::GroundInfo>();
         app.register_type::<detection::WallInfo>();
+        app.register_type::<CharacterGravity>();
 
         // Add the physics backend plugin
         app.add_plugins(B::plugin());

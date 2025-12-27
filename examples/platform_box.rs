@@ -40,16 +40,6 @@ struct Player;
 #[derive(Component)]
 struct AffectedByGravity;
 
-/// Resource to track the current gravity.
-#[derive(Resource)]
-struct Gravity(Vec2);
-
-impl Default for Gravity {
-    fn default() -> Self {
-        Self(Vec2::new(0.0, -980.0))
-    }
-}
-
 // ==================== Main ====================
 
 fn main() {
@@ -67,8 +57,6 @@ fn main() {
         .add_plugins(RapierDebugRenderPlugin::default())
         // Character controller
         .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
-        // Resources
-        .init_resource::<Gravity>()
         // Systems
         .add_systems(Startup, setup)
         .add_systems(
@@ -196,7 +184,7 @@ fn spawn_slope(commands: &mut Commands) {
     let collider = Collider::convex_hull(&vertices).expect("Failed to create slope collider");
 
     commands.spawn((
-        Transform::from_translation(Vec3::new(slope_x, slope_y + 50.0, 0.0)),
+        Transform::from_translation(Vec3::new(slope_x, slope_y, 0.0)),
         GlobalTransform::default(),
         RigidBody::Fixed,
         collider,
@@ -241,8 +229,11 @@ fn spawn_player(commands: &mut Commands) {
             // Character controller
             CharacterController::walking(),
             ControllerConfig::player()
-                .with_float_height(PLAYER_HALF_HEIGHT)
+                // Capsule total half-height = half_length + radius = 4 + 6 = 10
+                // We want to float 5 units above ground, so total = 10 + 5 = 15
+                .with_float_height(15.0)
                 .with_ground_cast_width(PLAYER_RADIUS),
+            CharacterGravity(Vec2::new(0.0, -980.0)), // Set gravity for this character
             WalkIntent::default(),
             FlyIntent::default(),
             JumpRequest::default(),
@@ -335,16 +326,15 @@ fn toggle_mode(
 /// Applies gravity to entities with the AffectedByGravity component.
 /// This is separate from the character controller's floating spring system.
 fn apply_gravity(
-    gravity: Res<Gravity>,
     time: Res<Time<Fixed>>,
     mut query: Query<
-        (&CharacterController, &mut Velocity, Option<&Grounded>),
+        (&CharacterController, &CharacterGravity, &mut Velocity, Option<&Grounded>),
         With<AffectedByGravity>,
     >,
 ) {
     let dt = time.delta_secs();
 
-    for (controller, mut velocity, grounded) in &mut query {
+    for (controller, gravity, mut velocity, grounded) in &mut query {
         // Only apply gravity in walking mode and when not grounded
         if controller.is_walking() && grounded.is_none() {
             velocity.linvel += gravity.0 * dt;

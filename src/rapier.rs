@@ -136,10 +136,10 @@ impl CharacterPhysicsBackend for Rapier2dBackend {
             .map(|gs| gs.0)
             .unwrap_or(1.0);
 
-        // For Rapier, we store gravity in a dedicated component or use default
-        // The actual gravity computation should be done by the game's gravity system
-        // Here we return the scale factor times a default gravity
-        Vec2::new(0.0, -9.81 * 16.0) * gravity_scale
+        // Since GravityScale is 0 for manually controlled gravity,
+        // this function returns zero gravity, which is correct
+        // The actual gravity is stored in CharacterGravity component
+        Vec2::ZERO
     }
 
     fn get_position(world: &World, entity: Entity) -> Vec2 {

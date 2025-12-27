@@ -304,6 +304,14 @@ pub struct ControllerConfig {
     /// Time before landing where jump input is buffered.
     pub jump_buffer_time: f32,
 
+    /// Extra gravity multiplier when falling.
+    ///
+    /// Applied when velocity is in the -UP direction (falling down).
+    /// 1.0 = double gravity when falling (1.0 base + 1.0 extra).
+    /// 0.0 = no extra gravity.
+    /// Values > 1.0 create super fast falls.
+    pub extra_fall_gravity: f32,
+
     // === Upright Torque Settings ===
     /// Whether to apply torque to keep the character upright.
     ///
@@ -330,13 +338,13 @@ impl Default for ControllerConfig {
     fn default() -> Self {
         Self {
             // Float settings
-            float_height: 8.0,
+            float_height: 15.0, // Should be at least collider half-height + desired float distance
             cling_distance: 2.0,
             cling_strength: 0.5,
 
             // Spring settings
-            spring_strength: 400.0,
-            spring_damping: 40.0,
+            spring_strength: 8000.0, // Much stronger to actually lift the character
+            spring_damping: 200.0, // Low damping to not kill movement
 
             // Movement settings
             max_speed: 100.0,
@@ -346,18 +354,19 @@ impl Default for ControllerConfig {
 
             // Slope settings
             max_slope_angle: std::f32::consts::FRAC_PI_3, // 60 degrees
-            uphill_gravity_multiplier: 1.5,
+            uphill_gravity_multiplier: 1.0, // Reduced from 1.5 to prevent shooting up slopes
 
             // Shapecast settings
-            ground_cast_length: 12.0,
+            ground_cast_length: 1000.0, // Long enough to detect ground from any reasonable height
             ground_cast_width: 6.0,
             wall_cast_length: 6.0,
             wall_cast_width: 4.0,
 
             // Jump settings
-            jump_speed: 200.0,
+            jump_speed: 5000.0, // Strong impulse to overcome mass (impulse = mass * velocity_change)
             coyote_time: 0.15,
             jump_buffer_time: 0.1,
+            extra_fall_gravity: 1.0, // Default to 1.0x extra gravity when falling
 
             // Upright torque settings
             upright_torque_enabled: true,
@@ -371,8 +380,8 @@ impl ControllerConfig {
     /// Create a config optimized for responsive player control.
     pub fn player() -> Self {
         Self {
-            spring_strength: 600.0,
-            spring_damping: 60.0,
+            spring_strength: 12000.0, // Very strong spring to float character with mass
+            spring_damping: 300.0, // Low damping ratio to preserve jumps
             acceleration: 1200.0,
             ..default()
         }
@@ -381,8 +390,8 @@ impl ControllerConfig {
     /// Create a config for AI-controlled characters.
     pub fn ai() -> Self {
         Self {
-            spring_strength: 300.0,
-            spring_damping: 30.0,
+            spring_strength: 1500.0, // Moderate spring for AI control
+            spring_damping: 75.0, // Proportional damping
             acceleration: 600.0,
             air_control: 0.1,
             ..default()
@@ -404,7 +413,12 @@ impl ControllerConfig {
     /// Builder: set float height.
     pub fn with_float_height(mut self, height: f32) -> Self {
         self.float_height = height;
-        self.ground_cast_length = height + self.cling_distance + 2.0;
+        // Auto-adjust ground cast length if it's too short
+        // Cast should be long enough to detect ground while falling
+        if self.ground_cast_length < height * 2.0 {
+            // No hardcoded max - just scale with float height
+            self.ground_cast_length = height * 10.0;
+        }
         self
     }
 
@@ -414,10 +428,24 @@ impl ControllerConfig {
         self
     }
 
+    /// Builder: set ground cast length (detection range).
+    pub fn with_ground_cast_length(mut self, length: f32) -> Self {
+        self.ground_cast_length = length;
+        self
+    }
+
     /// Builder: set spring parameters.
     pub fn with_spring(mut self, strength: f32, damping: f32) -> Self {
         self.spring_strength = strength;
         self.spring_damping = damping;
+        self
+    }
+
+    /// Builder: set spring strength only (maintains damping ratio).
+    pub fn with_spring_strength(mut self, strength: f32) -> Self {
+        let ratio = self.spring_damping / self.spring_strength;
+        self.spring_strength = strength;
+        self.spring_damping = strength * ratio;
         self
     }
 
@@ -456,6 +484,30 @@ impl ControllerConfig {
     pub fn with_upright_torque(mut self, strength: f32, damping: f32) -> Self {
         self.upright_torque_strength = strength;
         self.upright_torque_damping = damping;
+        self
+    }
+
+    /// Builder: set jump speed.
+    pub fn with_jump_speed(mut self, speed: f32) -> Self {
+        self.jump_speed = speed;
+        self
+    }
+
+    /// Builder: set uphill gravity multiplier.
+    ///
+    /// Controls extra downward force applied when walking uphill.
+    /// Set to 1.0 to disable the extra force.
+    pub fn with_uphill_gravity_multiplier(mut self, multiplier: f32) -> Self {
+        self.uphill_gravity_multiplier = multiplier;
+        self
+    }
+
+    /// Builder: set extra fall gravity multiplier.
+    ///
+    /// Controls additional gravity applied when falling down.
+    /// 0.0 = normal gravity only, 1.0 = double gravity when falling.
+    pub fn with_extra_fall_gravity(mut self, multiplier: f32) -> Self {
+        self.extra_fall_gravity = multiplier;
         self
     }
 }
