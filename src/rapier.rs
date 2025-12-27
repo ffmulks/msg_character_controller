@@ -166,6 +166,28 @@ impl Plugin for Rapier2dBackendPlugin {
 }
 
 
+/// Get the distance from collider center to bottom for a given collider.
+/// For capsules, this is half_height + radius.
+fn get_collider_bottom_offset(collider: &Collider) -> f32 {
+    // Try to get capsule shape parameters
+    if let Some(capsule) = collider.as_capsule() {
+        // Capsule: half-length of segment + radius
+        // For capsule_y(half_height, radius), the segment endpoints are at y = ±half_height
+        let segment = capsule.segment();
+        let half_height = (segment.a().y - segment.b().y).abs() / 2.0;
+        half_height + capsule.radius()
+    } else if let Some(ball) = collider.as_ball() {
+        // Ball: just the radius
+        ball.radius()
+    } else if let Some(cuboid) = collider.as_cuboid() {
+        // Cuboid: half the height (y dimension)
+        cuboid.half_extents().y
+    } else {
+        // Unknown shape: use 0 as fallback (float_height measured from center)
+        0.0
+    }
+}
+
 /// Rapier-specific ground detection system using shapecast.
 /// Inherits collision layers from the parent entity's collider.
 fn rapier_ground_detection(
@@ -180,6 +202,7 @@ fn rapier_ground_detection(
             &Velocity,
             &mut CharacterController,
             Option<&CollisionGroups>,
+            Option<&Collider>,
         ),
     >,
     time: Res<Time<Fixed>>,
@@ -191,10 +214,15 @@ fn rapier_ground_detection(
     let default_orientation = CharacterOrientation::default();
     let dt = time.delta_secs();
 
-    for (entity, transform, config, orientation_opt, stair_config, velocity, mut controller, collision_groups) in
+    for (entity, transform, config, orientation_opt, stair_config, velocity, mut controller, collision_groups, collider) in
         &mut q_controllers
     {
         let position = transform.translation().xy();
+
+        // Update collider_bottom_offset from actual collider dimensions
+        controller.collider_bottom_offset = collider
+            .map(get_collider_bottom_offset)
+            .unwrap_or(0.0);
 
         // Get orientation (use default if component not present)
         let orientation = orientation_opt.unwrap_or(&default_orientation);
@@ -221,6 +249,10 @@ fn rapier_ground_detection(
         // Compute rotation angle for the shape to align with character orientation
         let shape_rotation = orientation.angle() - std::f32::consts::FRAC_PI_2;
 
+        // Calculate effective float height (from center) and ground cast length
+        let effective_height = controller.effective_float_height(config);
+        let ground_cast_length = effective_height * config.ground_cast_multiplier;
+
         // Perform shapecast - use derived ground cast length
         let shape_result = context.cast_shape(
             position,
@@ -228,7 +260,7 @@ fn rapier_ground_detection(
             down,
             &shape,
             ShapeCastOptions {
-                max_time_of_impact: config.ground_cast_length(),
+                max_time_of_impact: ground_cast_length,
                 stop_at_penetration: false,
                 ..default()
             },
@@ -275,9 +307,9 @@ fn rapier_ground_detection(
             }
         }
 
-        // Update grounded state
+        // Update grounded state using effective float height (accounts for collider dimensions)
         controller.is_grounded = controller.ground_detected
-            && controller.ground_distance <= config.float_height + config.cling_distance;
+            && controller.ground_distance <= effective_height + config.cling_distance;
 
         // Update time since grounded
         if controller.is_grounded {
@@ -463,6 +495,10 @@ fn rapier_ceiling_detection(
 
         let shape_rotation = orientation.angle() - std::f32::consts::FRAC_PI_2;
 
+        // Calculate ceiling cast length using effective float height
+        let effective_height = controller.effective_float_height(config);
+        let ceiling_cast_length = effective_height * config.ceiling_cast_multiplier;
+
         // Shapecast upward - use derived ceiling cast length
         if let Some((_, hit)) = context.cast_shape(
             position,
@@ -470,7 +506,7 @@ fn rapier_ceiling_detection(
             up,
             &shape,
             ShapeCastOptions {
-                max_time_of_impact: config.ceiling_cast_length(),
+                max_time_of_impact: ceiling_cast_length,
                 stop_at_penetration: false,
                 ..default()
             },
