@@ -81,8 +81,9 @@ fn main() {
         // Physics with 16 pixels per meter
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(PIXELS_PER_METER))
         .add_plugins(RapierDebugRenderPlugin::default())
-        // Character controller
-        .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
+        // Character controller with EXTERNAL gravity
+        // We handle radial planetary gravity ourselves
+        .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::with_external_gravity())
         // Resources
         .init_resource::<PlanetConfig>()
         // Systems
@@ -91,9 +92,10 @@ fn main() {
             FixedUpdate,
             (
                 update_player_orientation,
-                apply_planetary_gravity, // Gravity always applies (walking AND flying)
+                apply_planetary_gravity,
+                update_controller_gravity,
             )
-                .before(msg_character_controller::systems::update_ground_detection::<Rapier2dBackend>),
+                .chain(),
         )
         .add_systems(Update, (handle_input, camera_follow))
         .run();
@@ -288,6 +290,9 @@ fn spawn_player(commands: &mut Commands) {
     // Initial orientation pointing away from planet
     let initial_orientation = CharacterOrientation::new(direction);
 
+    // Calculate initial gravity direction
+    let initial_gravity = -direction * GRAVITY_STRENGTH;
+
     commands
         .spawn((
             Player,
@@ -301,8 +306,9 @@ fn spawn_player(commands: &mut Commands) {
             },
         ))
         .insert((
-            // Character controller
-            CharacterController::new(),
+            // Character controller with initial gravity direction
+            // We use external gravity mode, so we update gravity in update_controller_gravity
+            CharacterController::with_gravity(initial_gravity),
             ControllerConfig::player()
                 .with_float_height(PLAYER_HALF_HEIGHT)
                 .with_ground_cast_width(PLAYER_RADIUS)
@@ -382,6 +388,20 @@ fn update_player_orientation(
             let angle = new_up.to_angle() - PI / 2.0;
             transform.rotation = Quat::from_rotation_z(angle);
         }
+    }
+}
+
+/// Updates the CharacterController's gravity vector to point toward planet center.
+/// This allows the floating spring to work correctly with radial gravity.
+fn update_controller_gravity(
+    planet: Res<PlanetConfig>,
+    mut query: Query<(&Transform, &mut CharacterController), With<AffectedByPlanetaryGravity>>,
+) {
+    for (transform, mut controller) in &mut query {
+        let position = transform.translation.xy();
+        let to_center = planet.center - position;
+        let gravity_dir = to_center.normalize_or_zero();
+        controller.set_gravity(gravity_dir * planet.gravity_strength);
     }
 }
 

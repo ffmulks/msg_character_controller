@@ -16,6 +16,7 @@ use msg_character_controller::prelude::*;
 
 const PLAYER_RADIUS: f32 = 6.0;
 const PLAYER_HALF_HEIGHT: f32 = 8.0;
+const FLOAT_HEIGHT: f32 = 15.0;
 
 fn main() {
     App::new()
@@ -27,35 +28,20 @@ fn main() {
             }),
             ..default()
         }))
-        // Physics
+        // Physics - disable Rapier's global gravity since we use internal gravity
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
         .add_plugins(RapierDebugRenderPlugin::default())
-        // Character controller
+        // Character controller with INTERNAL gravity (default)
+        // This means the plugin handles gravity - DO NOT apply gravity externally!
         .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
-        // Resources
-        .insert_resource(Gravity(Vec2::new(0.0, -980.0)))
         // Systems
         .add_systems(Startup, setup)
-        .add_systems(
-            Update,
-            (
-                handle_input,
-                apply_gravity,
-                debug_floating,
-                camera_follow,
-            ),
-        )
+        .add_systems(Update, (handle_input, debug_floating, camera_follow))
         .run();
 }
 
-#[derive(Resource)]
-struct Gravity(Vec2);
-
 #[derive(Component)]
 struct Player;
-
-#[derive(Component)]
-struct AffectedByGravity;
 
 #[derive(Component)]
 struct DebugText;
@@ -98,19 +84,17 @@ fn setup(mut commands: Commands) {
     let spawn_pos = Vec2::new(0.0, 200.0); // 400 units above platform!
 
     // Calculate expected float position
-    let float_height = 15.0; // From config
-    let expected_hover_y = -200.0 + 20.0 + float_height; // Platform top + float height
+    let expected_hover_y = -200.0 + 20.0 + FLOAT_HEIGHT; // Platform top + float height
 
     println!("=== FLOAT TEST SETUP ===");
     println!("Spawning player at Y: {}", spawn_pos.y);
     println!("Platform top at Y: {}", -180.0);
     println!("Expected float Y: {}", expected_hover_y);
-    println!("Float height config: {}", float_height);
+    println!("Float height config: {}", FLOAT_HEIGHT);
 
     commands
         .spawn((
             Player,
-            AffectedByGravity,
             Transform::from_translation(spawn_pos.extend(1.0)),
             GlobalTransform::default(),
             Sprite {
@@ -120,11 +104,12 @@ fn setup(mut commands: Commands) {
             },
         ))
         .insert((
-            // Character controller with explicit float height and gravity
+            // Character controller with explicit gravity
+            // The plugin uses INTERNAL gravity mode by default, so it applies gravity for us
             CharacterController::with_gravity(Vec2::new(0.0, -980.0)),
             ControllerConfig::player()
-                .with_float_height(15.0) // Should float 15 units above ground
-                .with_spring(20000.0, 500.0) // VERY strong spring
+                .with_float_height(FLOAT_HEIGHT)
+                .with_spring(15000.0, 400.0) // Strong spring with good damping
                 .with_ground_cast_width(PLAYER_RADIUS),
             WalkIntent::default(),
             JumpRequest::default(),
@@ -137,7 +122,9 @@ fn setup(mut commands: Commands) {
             ExternalImpulse::default(),
             LockedAxes::ROTATION_LOCKED,
             Collider::capsule_y(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS),
-            GravityScale(0.0), // Manual gravity
+            // IMPORTANT: Set GravityScale to 0 because we use internal gravity
+            // The plugin applies gravity as a force, not through Rapier's gravity system
+            GravityScale(0.0),
             Damping {
                 linear_damping: 0.0,
                 angular_damping: 0.0,
@@ -168,24 +155,12 @@ fn handle_input(
     }
 }
 
-fn apply_gravity(
-    gravity: Res<Gravity>,
-    time: Res<Time>,
-    mut query: Query<(&mut Velocity, Option<&Grounded>), With<AffectedByGravity>>,
-) {
-    let dt = time.delta_secs();
-
-    for (mut velocity, grounded) in &mut query {
-        // Only apply gravity when not grounded
-        if grounded.is_none() {
-            velocity.linvel += gravity.0 * dt;
-        }
-    }
-}
-
 fn debug_floating(
     mut text_query: Query<(&mut Text, &mut TextColor), With<DebugText>>,
-    player_query: Query<(&Transform, &Velocity, &CharacterController, Option<&Grounded>), With<Player>>,
+    player_query: Query<
+        (&Transform, &Velocity, &CharacterController, Option<&Grounded>),
+        With<Player>,
+    >,
 ) {
     let Ok((transform, velocity, controller, grounded)) = player_query.single() else {
         return;
@@ -208,7 +183,7 @@ fn debug_floating(
          Ground distance: {:.1}\n\
          Grounded: {}\n\
          \n\
-         EXPECTED: Should hover at ~15 units above platform\n\
+         EXPECTED: Should hover at ~{} units above platform\n\
          ACTUAL: {:.1} units above platform",
         transform.translation.y,
         velocity.linvel.y,
@@ -216,16 +191,20 @@ fn debug_floating(
         controller.ground_detected(),
         controller.ground_distance(),
         grounded_str,
+        FLOAT_HEIGHT,
         distance_from_platform
     );
 
     // Color based on floating state
-    if distance_from_platform > 10.0 && distance_from_platform < 20.0 && velocity.linvel.y.abs() < 50.0 {
-        color.0 = Color::srgb(0.2, 0.8, 0.2); // Green
+    if distance_from_platform > (FLOAT_HEIGHT - 3.0)
+        && distance_from_platform < (FLOAT_HEIGHT + 3.0)
+        && velocity.linvel.y.abs() < 50.0
+    {
+        color.0 = Color::srgb(0.2, 0.8, 0.2); // Green - floating correctly
     } else if controller.ground_detected() {
-        color.0 = Color::srgb(0.9, 0.9, 0.2); // Yellow
+        color.0 = Color::srgb(0.9, 0.9, 0.2); // Yellow - ground detected but not at target
     } else {
-        color.0 = Color::srgb(0.9, 0.3, 0.3); // Red
+        color.0 = Color::srgb(0.9, 0.3, 0.3); // Red - no ground detected
     }
 }
 

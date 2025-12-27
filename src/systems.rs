@@ -16,8 +16,10 @@ use crate::{GravityMode, GravityModeResource};
 
 /// Apply the floating spring force to maintain float height.
 ///
-/// This system reads ground detection data from the CharacterController
-/// and applies spring forces to maintain the configured float height.
+/// This system uses a proper PD (proportional-derivative) controller to maintain
+/// the character at float_height above ground. The spring applies force in BOTH
+/// directions - pushing up when below target, pushing down when above target.
+/// This creates stable hovering behavior.
 pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
     // Collect entities that need floating spring
     let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController)> =
@@ -40,50 +42,33 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
             .collect();
 
     for (entity, config, orientation, controller) in entities {
+        // Only apply spring when ground is detected
         if !controller.ground_detected {
             continue;
         }
 
         let velocity = B::get_velocity(world, entity);
         let up = orientation.up();
-        let gravity = controller.gravity;
 
         // Calculate height error (positive = below float height, negative = above)
-        let height_error = controller.height_error(config.float_height);
+        let height_error = config.float_height - controller.ground_distance;
         let vertical_velocity = velocity.dot(up);
 
-        // Float height is a FLOOR, not a target!
-        // Only apply spring force when BELOW float height (height_error > 0)
-        // Never pull the character DOWN when they're above float height (e.g., jumping)
-        if height_error > 0.0 {
-            // Spring force: F = k * x - c * v
-            // Only apply when below float height to push character up
-            let spring_force =
-                config.spring_strength * height_error - config.spring_damping * vertical_velocity;
+        // Apply spring force using PD control: F = k * error - d * velocity
+        // This works in BOTH directions:
+        // - When below target (error > 0): push UP
+        // - When above target (error < 0): push DOWN (soft landing)
+        //
+        // The damping term reduces oscillation and provides smooth settling.
+        let spring_force =
+            config.spring_strength * height_error - config.spring_damping * vertical_velocity;
 
-            let force = up * spring_force;
-            B::apply_force(world, entity, force);
-        }
+        // Clamp force to prevent extreme values
+        let max_force = config.spring_strength * config.float_height * 2.0;
+        let clamped_force = spring_force.clamp(-max_force, max_force);
 
-        // Apply cling force when above float height but within cling distance
-        // This helps the character stick to ground on bumpy terrain
-        // But skip if we're moving upward fast (probably jumping)
-        if height_error < 0.0
-            && controller.ground_distance <= config.float_height + config.cling_distance
-            && config.cling_strength > 0.0
-            && vertical_velocity < 100.0
-        {
-            let cling_force = gravity * config.cling_strength;
-            B::apply_force(world, entity, cling_force);
-        }
-
-        // Apply extra fall gravity when falling (velocity is in -UP direction)
-        // This makes the character fall faster, creating a more responsive feel
-        // Uses the controller's gravity field
-        if vertical_velocity < 0.0 && config.extra_fall_gravity > 0.0 {
-            let extra_gravity_force = gravity * config.extra_fall_gravity;
-            B::apply_force(world, entity, extra_gravity_force);
-        }
+        let force = up * clamped_force;
+        B::apply_force(world, entity, force);
     }
 }
 
@@ -91,7 +76,10 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
 ///
 /// This system applies gravity from CharacterController.gravity when:
 /// - GravityMode is Internal
-/// - Character is not grounded
+/// - Character is NOT grounded (airborne)
+///
+/// Gravity is applied as a velocity change (acceleration) per physics frame.
+/// When grounded, the floating spring maintains height instead.
 pub fn apply_internal_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
     // Check gravity mode
     let gravity_mode = world
@@ -114,7 +102,8 @@ pub fn apply_internal_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
         .collect();
 
     for (entity, controller) in entities {
-        // Apply gravity as a velocity change (acceleration)
+        // Apply gravity as acceleration (velocity change)
+        // This is the standard physics approach: v += g * dt
         let velocity = B::get_velocity(world, entity);
         let new_velocity = velocity + controller.gravity * dt;
         B::set_velocity(world, entity, new_velocity);
@@ -123,29 +112,35 @@ pub fn apply_internal_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
 
 /// Apply horizontal walking movement based on intent.
 ///
-/// This system handles horizontal movement with slope handling when grounded
-/// and reduced air control when airborne.
+/// Movement is applied along the ground tangent when grounded, or along the
+/// character's horizontal axis when airborne. Vertical velocity is always
+/// preserved correctly using orthogonal decomposition.
 pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, WalkIntent, CharacterController)> =
-        world
-            .query::<(
-                Entity,
-                &ControllerConfig,
-                Option<&CharacterOrientation>,
-                &WalkIntent,
-                &CharacterController,
-            )>()
-            .iter(world)
-            .map(|(e, config, orientation, intent, controller)| {
-                (
-                    e,
-                    *config,
-                    orientation.copied().unwrap_or_default(),
-                    *intent,
-                    controller.clone(),
-                )
-            })
-            .collect();
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        CharacterOrientation,
+        WalkIntent,
+        CharacterController,
+    )> = world
+        .query::<(
+            Entity,
+            &ControllerConfig,
+            Option<&CharacterOrientation>,
+            &WalkIntent,
+            &CharacterController,
+        )>()
+        .iter(world)
+        .map(|(e, config, orientation, intent, controller)| {
+            (
+                e,
+                *config,
+                orientation.copied().unwrap_or_default(),
+                *intent,
+                controller.clone(),
+            )
+        })
+        .collect();
 
     // Get fixed timestep delta, with fallback for testing scenarios
     let dt = world
@@ -156,17 +151,25 @@ pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
 
     for (entity, config, orientation, intent, controller) in entities {
         let current_velocity = B::get_velocity(world, entity);
-        let up = orientation.up();
 
-        // Determine movement direction based on ground normal (tangent to slope)
-        // or use the character's local right direction if not grounded
-        let right = if controller.ground_detected {
-            controller.ground_tangent()
+        // Get orthogonal axes for velocity decomposition
+        // CRITICAL: Both axes MUST be orthogonal to avoid velocity leakage
+        let (move_axis, vertical_axis) = if controller.ground_detected && controller.is_grounded {
+            // On ground: use ground tangent for movement, ground normal for vertical
+            // These are guaranteed orthogonal
+            let tangent = controller.ground_tangent();
+            let normal = controller.ground_normal;
+            (tangent, normal)
         } else {
-            orientation.right()
+            // In air: use character's local axes
+            (orientation.right(), orientation.up())
         };
 
-        // Calculate desired velocity
+        // Decompose velocity into orthogonal components
+        let current_horizontal = current_velocity.dot(move_axis);
+        let current_vertical = current_velocity.dot(vertical_axis);
+
+        // Calculate desired horizontal velocity
         let desired_speed = intent.effective() * config.max_speed;
 
         // Determine acceleration based on grounded state
@@ -176,15 +179,12 @@ pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
             config.acceleration * config.air_control
         };
 
-        // Get horizontal component of current velocity (along movement axis)
-        let current_horizontal = current_velocity.dot(right);
-
         // Calculate velocity change
         let velocity_diff = desired_speed - current_horizontal;
         let max_change = accel * dt;
         let change = velocity_diff.clamp(-max_change, max_change);
 
-        // Apply friction when no input
+        // Apply friction when no input and grounded
         let friction_multiplier = if !intent.is_active() && controller.is_grounded {
             1.0 - config.friction
         } else {
@@ -194,10 +194,9 @@ pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
         // Calculate new horizontal velocity
         let new_horizontal = (current_horizontal + change) * friction_multiplier;
 
-        // Preserve vertical velocity (along up direction), replace horizontal
-        let vertical_velocity = current_velocity.dot(up);
-
-        let new_velocity = right * new_horizontal + up * vertical_velocity;
+        // Reconstruct velocity using ORTHOGONAL axes
+        // This preserves vertical velocity exactly
+        let new_velocity = move_axis * new_horizontal + vertical_axis * current_vertical;
         B::set_velocity(world, entity, new_velocity);
     }
 }
@@ -211,7 +210,13 @@ pub fn apply_walk_movement<B: CharacterPhysicsBackend>(world: &mut World) {
 ///
 /// This is independent of horizontal walking movement and jump impulses.
 pub fn apply_propulsion<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, PropulsionIntent, CharacterController)> = world
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        CharacterOrientation,
+        PropulsionIntent,
+        CharacterController,
+    )> = world
         .query::<(
             Entity,
             &ControllerConfig,
@@ -285,29 +290,34 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
         .map(|t| t.elapsed_secs())
         .unwrap_or(0.0);
 
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController, bool)> =
-        world
-            .query::<(
-                Entity,
-                &ControllerConfig,
-                Option<&CharacterOrientation>,
-                &CharacterController,
-                &JumpRequest,
-            )>()
-            .iter(world)
-            .map(|(e, config, orientation, controller, jump)| {
-                let can_jump = jump.is_valid(time, config.jump_buffer_time)
-                    && (controller.is_grounded
-                        || controller.time_since_grounded < config.coyote_time);
-                (
-                    e,
-                    *config,
-                    orientation.copied().unwrap_or_default(),
-                    controller.clone(),
-                    can_jump,
-                )
-            })
-            .collect();
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        CharacterOrientation,
+        CharacterController,
+        bool,
+    )> = world
+        .query::<(
+            Entity,
+            &ControllerConfig,
+            Option<&CharacterOrientation>,
+            &CharacterController,
+            &JumpRequest,
+        )>()
+        .iter(world)
+        .map(|(e, config, orientation, controller, jump)| {
+            let can_jump = jump.is_valid(time, config.jump_buffer_time)
+                && (controller.is_grounded
+                    || controller.time_since_grounded < config.coyote_time);
+            (
+                e,
+                *config,
+                orientation.copied().unwrap_or_default(),
+                controller.clone(),
+                can_jump,
+            )
+        })
+        .collect();
 
     for (entity, config, orientation, controller, can_jump) in entities {
         if !can_jump {
@@ -319,8 +329,8 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
             jump.consume();
         }
 
-        // Calculate jump direction: use ground normal if detected, otherwise character's up
-        let up = if controller.ground_detected {
+        // Calculate jump direction: use ground normal if grounded, otherwise character's up
+        let up = if controller.is_grounded {
             controller.ground_normal
         } else {
             orientation.up()

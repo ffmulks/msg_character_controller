@@ -38,10 +38,6 @@ const PLATFORM_Y: f32 = 100.0;
 #[derive(Component)]
 struct Player;
 
-/// Marker for entities that need gravity applied.
-#[derive(Component)]
-struct AffectedByGravity;
-
 // ==================== Main ====================
 
 fn main() {
@@ -57,11 +53,12 @@ fn main() {
         // Physics
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
         .add_plugins(RapierDebugRenderPlugin::default())
-        // Character controller
+        // Character controller with INTERNAL gravity (default)
+        // The plugin handles gravity for us - no need for external gravity system
         .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
         // Systems
         .add_systems(Startup, setup)
-        .add_systems(Update, (handle_input, apply_gravity, camera_follow))
+        .add_systems(Update, (handle_input, camera_follow))
         .run();
 }
 
@@ -192,7 +189,6 @@ fn spawn_player(commands: &mut Commands) {
     commands
         .spawn((
             Player,
-            AffectedByGravity,
             Transform::from_translation(spawn_pos.extend(1.0)),
             GlobalTransform::default(),
             Sprite {
@@ -203,6 +199,7 @@ fn spawn_player(commands: &mut Commands) {
         ))
         .insert((
             // Character controller with gravity
+            // The plugin uses INTERNAL gravity mode by default, so it handles gravity for us
             CharacterController::with_gravity(Vec2::new(0.0, -980.0)),
             ControllerConfig::player()
                 // Capsule total half-height = half_length + radius = 4 + 6 = 10
@@ -221,7 +218,8 @@ fn spawn_player(commands: &mut Commands) {
             ExternalImpulse::default(),
             LockedAxes::ROTATION_LOCKED,
             Collider::capsule_y(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS),
-            GravityScale(0.0), // We apply gravity manually
+            // IMPORTANT: Set GravityScale to 0 because we use internal gravity
+            GravityScale(0.0),
             Damping {
                 linear_damping: 0.0,
                 angular_damping: 0.0,
@@ -261,27 +259,6 @@ fn handle_input(
         // Jump on W or Up (just pressed)
         if keyboard.just_pressed(KeyCode::KeyW) || keyboard.just_pressed(KeyCode::ArrowUp) {
             jump_request.request(time.elapsed_secs());
-        }
-    }
-}
-
-// ==================== Gravity System ====================
-
-/// Applies gravity to entities with the AffectedByGravity component.
-/// This is separate from the character controller's floating spring system.
-fn apply_gravity(
-    time: Res<Time<Fixed>>,
-    mut query: Query<
-        (&CharacterController, &mut Velocity, Option<&Grounded>),
-        With<AffectedByGravity>,
-    >,
-) {
-    let dt = time.delta_secs();
-
-    for (controller, mut velocity, grounded) in &mut query {
-        // Only apply gravity when not grounded
-        if grounded.is_none() {
-            velocity.linvel += controller.gravity * dt;
         }
     }
 }
