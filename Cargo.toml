@@ -28,6 +28,7 @@ examples = [
     "bevy/default_font",
     "bevy/multi_threaded",
     "bevy/png",
+    "bevy/x11",
 ]
 
 [dependencies.bevy_rapier2d]

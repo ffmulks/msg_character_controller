@@ -25,7 +25,6 @@ const PLAYER_RADIUS: f32 = 6.0;
 
 const PLANET_RADIUS: f32 = 300.0;
 const PLANET_CENTER: Vec2 = Vec2::ZERO;
-const PLANET_SEGMENTS: usize = 64;
 
 const PLATFORM_WIDTH: f32 = 80.0;
 const PLATFORM_HEIGHT: f32 = 15.0;
@@ -164,31 +163,13 @@ fn setup(mut commands: Commands) {
 }
 
 fn spawn_planet(commands: &mut Commands) {
-    // Create planet as a series of edge segments forming a circle
-    let mut vertices = Vec::with_capacity(PLANET_SEGMENTS);
-    for i in 0..PLANET_SEGMENTS {
-        let angle = (i as f32 / PLANET_SEGMENTS as f32) * std::f32::consts::TAU;
-        vertices.push(Vec2::new(
-            angle.cos() * PLANET_RADIUS,
-            angle.sin() * PLANET_RADIUS,
-        ));
-    }
-
-    // Create indices for the triangle mesh (fan from center)
-    let center_vertex = vertices.len();
-    vertices.push(Vec2::ZERO); // Add center point
-
-    let mut indices = Vec::with_capacity(PLANET_SEGMENTS);
-    for i in 0..PLANET_SEGMENTS {
-        let next = (i + 1) % PLANET_SEGMENTS;
-        indices.push([center_vertex as u32, i as u32, next as u32]);
-    }
-
+    // Create planet as a circle collider (ball)
+    // This is simpler and more efficient than a trimesh for a circle
     commands.spawn((
         Transform::from_translation(PLANET_CENTER.extend(0.0)),
         GlobalTransform::default(),
         RigidBody::Fixed,
-        Collider::trimesh(vertices, indices),
+        Collider::ball(PLANET_RADIUS),
         Sprite {
             color: Color::srgb(0.25, 0.35, 0.25),
             custom_size: Some(Vec2::splat(PLANET_RADIUS * 2.0)),
@@ -237,13 +218,14 @@ fn spawn_surface_slope(commands: &mut Commands, angle_offset: f32) {
         Vec2::new(40.0, 50.0), // Top right
     ];
 
-    let indices: Vec<[u32; 3]> = vec![[0, 1, 2]];
+    // Use convex_hull which works well for triangles
+    let collider = Collider::convex_hull(&vertices).expect("Failed to create slope collider");
 
     commands.spawn((
         Transform::from_translation(position.extend(0.0)).with_rotation(rotation),
         GlobalTransform::default(),
         RigidBody::Fixed,
-        Collider::trimesh(vertices, indices),
+        collider,
         Sprite {
             color: Color::srgb(0.5, 0.4, 0.3),
             custom_size: Some(Vec2::new(80.0, 50.0)),
@@ -261,41 +243,43 @@ fn spawn_player(commands: &mut Commands) {
     // Initial orientation pointing away from planet
     let initial_orientation = CharacterOrientation::new(direction);
 
-    commands.spawn((
-        Player,
-        AffectedByPlanetaryGravity,
-        // Transform
-        Transform::from_translation(spawn_pos.extend(1.0)),
-        GlobalTransform::default(),
-        // Visual
-        Sprite {
-            color: Color::srgb(0.2, 0.6, 0.9),
-            custom_size: Some(Vec2::new(PLAYER_RADIUS * 2.0, PLAYER_SIZE)),
-            ..default()
-        },
-        // Character controller
-        CharacterController::walking(),
-        ControllerConfig::player()
-            .with_float_height(PLAYER_HALF_HEIGHT)
-            .with_ground_cast_width(PLAYER_RADIUS)
-            .with_upright_torque_enabled(false), // We handle rotation via orientation
-        initial_orientation,
-        WalkIntent::default(),
-        FlyIntent::default(),
-        JumpRequest::default(),
-        // Physics
-        RigidBody::Dynamic,
-        Velocity::default(),
-        ExternalForce::default(),
-        ExternalImpulse::default(),
-        // Don't lock rotation - let us rotate the sprite to match orientation
-        Collider::capsule_y(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS),
-        GravityScale(0.0), // We apply gravity manually
-        Damping {
-            linear_damping: 0.0,
-            angular_damping: 5.0, // Some angular damping for stability
-        },
-    ));
+    commands
+        .spawn((
+            Player,
+            AffectedByPlanetaryGravity,
+            Transform::from_translation(spawn_pos.extend(1.0)),
+            GlobalTransform::default(),
+            Sprite {
+                color: Color::srgb(0.2, 0.6, 0.9),
+                custom_size: Some(Vec2::new(PLAYER_RADIUS * 2.0, PLAYER_SIZE)),
+                ..default()
+            },
+        ))
+        .insert((
+            // Character controller
+            CharacterController::walking(),
+            ControllerConfig::player()
+                .with_float_height(PLAYER_HALF_HEIGHT)
+                .with_ground_cast_width(PLAYER_RADIUS)
+                .with_upright_torque_enabled(false), // We handle rotation via orientation
+            initial_orientation,
+            WalkIntent::default(),
+            FlyIntent::default(),
+            JumpRequest::default(),
+        ))
+        .insert((
+            // Physics
+            RigidBody::Dynamic,
+            Velocity::default(),
+            ExternalForce::default(),
+            ExternalImpulse::default(),
+            Collider::capsule_y(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS),
+            GravityScale(0.0), // We apply gravity manually
+            Damping {
+                linear_damping: 0.0,
+                angular_damping: 5.0, // Some angular damping for stability
+            },
+        ));
 }
 
 // ==================== Input Handling ====================
@@ -422,11 +406,11 @@ fn camera_follow(
     player_query: Query<&Transform, (With<Player>, Without<Camera2d>)>,
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
 ) {
-    let Ok(player_transform) = player_query.get_single() else {
+    let Ok(player_transform) = player_query.single() else {
         return;
     };
 
-    let Ok(mut camera_transform) = camera_query.get_single_mut() else {
+    let Ok(mut camera_transform) = camera_query.single_mut() else {
         return;
     };
 
@@ -452,7 +436,7 @@ fn display_mode_ui(
     player_query: Query<&CharacterController, With<Player>>,
     mut text_query: Query<(&mut Text, &mut TextColor), With<ModeDisplay>>,
 ) {
-    let Ok(controller) = player_query.get_single() else {
+    let Ok(controller) = player_query.single() else {
         return;
     };
 
