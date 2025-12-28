@@ -164,23 +164,19 @@ pub struct Rapier2dBackendPlugin;
 
 impl Plugin for Rapier2dBackendPlugin {
     fn build(&self, app: &mut App) {
-        // Add Rapier-specific detection systems that use RapierContext
-        // These run BEFORE the generic controller systems
+        // Add Rapier-specific detection systems that use RapierContext.
+        // These run BEFORE the generic controller systems.
+        // We reset external forces first, then detect, then apply new forces.
         app.add_systems(
             FixedUpdate,
             (
+                reset_external_forces,
                 rapier_ground_detection,
                 rapier_wall_detection,
                 rapier_ceiling_detection,
             )
                 .chain()
-                .before(crate::systems::apply_floating_spring::<Rapier2dBackend>),
-        );
-
-        // Ensure external force/impulse are reset each frame
-        app.add_systems(
-            FixedPostUpdate,
-            reset_external_forces.after(crate::systems::reset_jump_requests),
+                .before(crate::CharacterControllerSet::ApplyForces),
         );
     }
 }

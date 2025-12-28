@@ -51,6 +51,7 @@ pub mod prelude {
     //! Convenient re-exports for common usage.
 
     pub use crate::CharacterControllerPlugin;
+    pub use crate::CharacterControllerSet;
     pub use crate::GravityMode;
     pub use crate::backend::CharacterPhysicsBackend;
     pub use crate::collision::CollisionData;
@@ -179,7 +180,9 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
         // Add the physics backend plugin
         app.add_plugins(B::plugin());
 
-        // Add core systems in FixedUpdate for consistent physics behavior
+        // Add core systems in FixedUpdate for consistent physics behavior.
+        // These systems apply forces/torques/impulses to ExternalForce components.
+        // The forces persist until the physics backend processes them (PostUpdate for Rapier).
         app.add_systems(
             FixedUpdate,
             (
@@ -190,12 +193,22 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
                 systems::apply_jump::<B>,
                 systems::sync_state_markers,
             )
-                .chain(),
+                .chain()
+                .in_set(CharacterControllerSet::ApplyForces),
         );
 
         // Reset jump requests at end of fixed update
         app.add_systems(FixedPostUpdate, systems::reset_jump_requests);
     }
+}
+
+/// System set for character controller systems.
+/// Use this to order your systems relative to the character controller.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CharacterControllerSet {
+    /// Systems that apply forces, torques, and impulses.
+    /// These run before the physics step.
+    ApplyForces,
 }
 
 /// Resource to store the gravity mode configuration.

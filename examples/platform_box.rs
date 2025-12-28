@@ -215,22 +215,23 @@ fn spawn_player(commands: &mut Commands) {
                 // Capsule total half-height = half_length + radius = 4 + 6 = 10
                 // We want to float 5 units above ground, so total = 10 + 5 = 15
                 .with_float_height(15.0)
-                .with_ground_cast_width(PLAYER_RADIUS),
+                .with_ground_cast_width(PLAYER_RADIUS)
+                // Explicit upright target: 0 radians = standing upright
+                .with_upright_target_angle(0.0),
             MovementIntent::default(),
             JumpRequest::default(),
         ))
         .insert((
-            // Physics
+            // Physics - rotation NOT locked, upright torque keeps character upright
             RigidBody::Dynamic,
             Velocity::default(),
             ExternalForce::default(),
             ExternalImpulse::default(),
-            LockedAxes::ROTATION_LOCKED,
             Collider::capsule_y(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS),
             GravityScale(0.0), // We apply gravity manually
             Damping {
                 linear_damping: 0.0,
-                angular_damping: 0.0,
+                angular_damping: 2.0, // Some damping helps stabilize rotation
             },
         ));
 }
