@@ -216,8 +216,7 @@ fn spawn_player(commands: &mut Commands) {
                 // We want to float 5 units above ground, so total = 10 + 5 = 15
                 .with_float_height(15.0)
                 .with_ground_cast_width(PLAYER_RADIUS),
-            WalkIntent::default(),
-            PropulsionIntent::default(),
+            MovementIntent::default(),
             JumpRequest::default(),
         ))
         .insert((
@@ -242,19 +241,18 @@ fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     egui_wants_input: Res<EguiWantsInput>,
-    mut query: Query<(&mut WalkIntent, &mut PropulsionIntent, &mut JumpRequest), With<Player>>,
+    mut query: Query<(&mut MovementIntent, &mut JumpRequest), With<Player>>,
 ) {
     // Skip input handling if egui wants keyboard input
     if egui_wants_input.wants_any_keyboard_input() {
         // Clear any ongoing movement when egui takes focus
-        for (mut walk_intent, mut propulsion, _) in &mut query {
-            walk_intent.set(0.0);
-            propulsion.set(0.0);
+        for (mut movement, _) in &mut query {
+            movement.clear();
         }
         return;
     }
 
-    for (mut walk_intent, mut propulsion, mut jump_request) in &mut query {
+    for (mut movement, mut jump_request) in &mut query {
         // Horizontal input (A/D or Left/Right)
         let mut horizontal = 0.0;
         if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
@@ -264,7 +262,7 @@ fn handle_input(
             horizontal += 1.0;
         }
 
-        walk_intent.set(horizontal);
+        movement.set_walk(horizontal);
 
         // Vertical propulsion (Space = up, S/Down = down)
         let mut vertical = 0.0;
@@ -274,7 +272,7 @@ fn handle_input(
         if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
             vertical -= 1.0;
         }
-        propulsion.set(vertical);
+        movement.set_fly(vertical);
 
         // Jump on W or Up (just pressed)
         if keyboard.just_pressed(KeyCode::KeyW) || keyboard.just_pressed(KeyCode::ArrowUp) {
