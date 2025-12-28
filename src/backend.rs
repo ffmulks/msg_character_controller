@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 
-use crate::detection::SensorCast;
+use crate::collision::CollisionData;
 
 /// Trait for physics backend implementations.
 ///
@@ -49,24 +49,39 @@ pub trait CharacterPhysicsBackend: 'static + Send + Sync {
     /// * `direction` - Cast direction (should be normalized)
     /// * `max_distance` - Maximum cast distance
     /// * `shape_width` - Width of the cast shape (half-width of the line)
+    /// * `shape_height` - Height of the cast shape (for wall detection)
+    /// * `shape_rotation` - Rotation of the shape in radians
     /// * `exclude_entity` - Entity to exclude from cast (usually self)
+    /// * `collision_groups` - Optional collision groups for filtering (memberships, filters)
     fn shapecast(
         world: &World,
         origin: Vec2,
         direction: Vec2,
         max_distance: f32,
         shape_width: f32,
+        shape_height: f32,
+        shape_rotation: f32,
         exclude_entity: Entity,
-    ) -> SensorCast;
+        collision_groups: Option<(u32, u32)>,
+    ) -> Option<CollisionData>;
 
     /// Perform a simple raycast (for stair detection, etc).
+    ///
+    /// # Arguments
+    /// * `world` - The ECS world for queries
+    /// * `origin` - Shape origin in world space
+    /// * `direction` - Cast direction (should be normalized)
+    /// * `max_distance` - Maximum cast distance
+    /// * `exclude_entity` - Entity to exclude from cast (usually self)
+    /// * `collision_groups` - Optional collision groups for filtering (memberships, filters)
     fn raycast(
         world: &World,
         origin: Vec2,
         direction: Vec2,
         max_distance: f32,
         exclude_entity: Entity,
-    ) -> SensorCast;
+        collision_groups: Option<(u32, u32)>,
+    ) -> Option<CollisionData>;
 
     /// Get the current velocity of an entity.
     fn get_velocity(world: &World, entity: Entity) -> Vec2;
@@ -107,6 +122,20 @@ pub trait CharacterPhysicsBackend: 'static + Send + Sync {
 
     /// Get the fixed timestep delta time.
     fn get_fixed_timestep(world: &World) -> f32;
+
+    /// Get the collision groups for an entity (memberships, filters).
+    /// Returns None if the entity doesn't have collision groups.
+    fn get_collision_groups(_world: &World, _entity: Entity) -> Option<(u32, u32)> {
+        // Default implementation returns None
+        None
+    }
+
+    /// Get the collider bottom offset for an entity.
+    /// This is the distance from the collider center to its bottom.
+    fn get_collider_bottom_offset(_world: &World, _entity: Entity) -> f32 {
+        // Default implementation returns 0
+        0.0
+    }
 }
 
 /// Empty plugin for backends that don't need additional setup.

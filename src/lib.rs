@@ -40,8 +40,8 @@
 use bevy::prelude::*;
 
 pub mod backend;
+pub mod collision;
 pub mod config;
-pub mod detection;
 pub mod intent;
 pub mod state;
 pub mod systems;
@@ -52,13 +52,15 @@ pub mod rapier;
 pub mod prelude {
     //! Convenient re-exports for common usage.
 
-    pub use crate::backend::CharacterPhysicsBackend;
-    pub use crate::config::{CharacterController, CharacterOrientation, ControllerConfig, StairConfig};
-    pub use crate::detection::SensorCast;
-    pub use crate::intent::{JumpRequest, PropulsionIntent, WalkIntent};
-    pub use crate::state::{Airborne, Grounded, TouchingCeiling, TouchingWall};
     pub use crate::CharacterControllerPlugin;
     pub use crate::GravityMode;
+    pub use crate::backend::CharacterPhysicsBackend;
+    pub use crate::collision::CollisionData;
+    pub use crate::config::{
+        CharacterController, CharacterOrientation, ControllerConfig, StairConfig,
+    };
+    pub use crate::intent::{JumpRequest, PropulsionIntent, WalkIntent};
+    pub use crate::state::{Airborne, Grounded, TouchingCeiling, TouchingWall};
 
     #[cfg(feature = "rapier2d")]
     pub use crate::rapier::Rapier2dBackend;

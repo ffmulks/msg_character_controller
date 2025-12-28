@@ -556,3 +556,354 @@ pub fn apply_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
         B::apply_torque(world, entity, total_torque);
     }
 }
+
+/*
+/// Generic ground detection system using backend trait methods.
+/// Note: Currently not used for Rapier backend due to system parameter limitations.
+#[allow(dead_code)]
+pub fn generic_ground_detection<B: CharacterPhysicsBackend>(world: &mut World) {
+    // Collect query data to avoid mutable/immutable world borrow conflicts
+    let mut controllers: Vec<(
+        Entity,
+        Vec2,
+        ControllerConfig,
+        CharacterOrientation,
+        Option<StairConfig>,
+        Vec2, // velocity
+        Option<(u32, u32)>, // collision groups
+        Option<f32>, // collider bottom offset
+    )> = Vec::new();
+
+    // First pass: collect all needed data
+    {
+        let mut query = world.query::<(
+            Entity,
+            &GlobalTransform,
+            &ControllerConfig,
+            Option<&CharacterOrientation>,
+            Option<&StairConfig>,
+            &mut CharacterController,
+        )>();
+
+        for (entity, transform, config, orientation_opt, stair_config, mut controller) in query.iter_mut(world) {
+            let position = transform.translation().xy();
+            let orientation = orientation_opt.copied().unwrap_or_default();
+            let velocity = B::get_velocity(world, entity);
+
+            // Get collision groups through backend
+            let collision_groups = B::get_collision_groups(world, entity);
+
+            // Get collider bottom offset through backend
+            let collider_bottom_offset = B::get_collider_bottom_offset(world, entity);
+
+            controllers.push((
+                entity,
+                position,
+                *config,
+                orientation,
+                stair_config.copied(),
+                velocity,
+                collision_groups,
+                Some(collider_bottom_offset),
+            ));
+        }
+    }
+
+    let dt = B::get_fixed_timestep(world);
+
+    // Second pass: perform detection and update controllers
+    for (entity, position, config, orientation, stair_config, velocity, collision_groups, collider_bottom_offset) in controllers {
+        let down = orientation.down();
+        let right = orientation.right();
+
+        // Get the controller for updating
+        let Some(mut controller) = world.get_mut::<CharacterController>(entity) else {
+            continue;
+        };
+
+        // Update collider_bottom_offset if provided
+        if let Some(offset) = collider_bottom_offset {
+            controller.collider_bottom_offset = offset;
+        }
+
+        // Calculate effective float height (from center) and ground cast length
+        let effective_height = controller.effective_float_height(&config);
+        let ground_cast_length = effective_height * config.ground_cast_multiplier;
+
+        // Compute rotation angle for the shape to align with character orientation
+        let shape_rotation = orientation.angle() - std::f32::consts::FRAC_PI_2;
+
+        // Store previous time_since_grounded
+        let prev_time_since_grounded = controller.time_since_grounded;
+
+        // Reset ground detection state
+        controller.reset_detection_state();
+
+        // Perform shapecast for ground detection
+        if let Some(ground_hit) = B::shapecast(
+            world,
+            position,
+            down,
+            ground_cast_length,
+            config.ground_cast_width,
+            0.0, // height not used for ground detection
+            shape_rotation,
+            entity,
+            collision_groups,
+        ) {
+            // Update from shapecast result
+            let normal = ground_hit.normal;
+            let up = orientation.up();
+            let dot = normal.dot(up).clamp(-1.0, 1.0);
+            let slope_angle = dot.acos();
+
+            controller.ground_detected = true;
+            controller.ground_distance = ground_hit.distance;
+            controller.ground_normal = normal;
+            controller.ground_contact_point = ground_hit.point;
+            controller.slope_angle = slope_angle;
+            controller.ground_entity = ground_hit.entity;
+
+            // Check for stairs if enabled
+            let is_walkable = slope_angle <= config.max_slope_angle;
+            if let Some(stair) = stair_config {
+                if stair.enabled && !is_walkable {
+                    if let Some(step_height) = check_stair_step_generic::<B>(
+                        world,
+                        entity,
+                        position,
+                        velocity,
+                        &orientation,
+                        &stair,
+                        collision_groups,
+                    ) {
+                        controller.step_detected = true;
+                        controller.step_height = step_height;
+                    }
+                }
+            }
+        }
+
+        // Update grounded state using effective float height (accounts for collider dimensions)
+        controller.is_grounded = controller.ground_detected
+            && controller.ground_distance <= effective_height + config.cling_distance;
+
+        // Update time since grounded
+        if controller.is_grounded {
+            controller.time_since_grounded = 0.0;
+        } else {
+            controller.time_since_grounded = prev_time_since_grounded + dt;
+        }
+    }
+}
+
+/// Generic wall detection system using backend trait methods.
+/// Note: Currently not used for Rapier backend due to system parameter limitations.
+#[allow(dead_code)]
+pub fn generic_wall_detection<B: CharacterPhysicsBackend>(world: &mut World) {
+    // Collect query data
+    let mut controllers: Vec<(
+        Entity,
+        Vec2,
+        ControllerConfig,
+        CharacterOrientation,
+        Option<(u32, u32)>, // collision groups
+    )> = Vec::new();
+
+    {
+        let mut query = world.query::<(
+            Entity,
+            &GlobalTransform,
+            &ControllerConfig,
+            Option<&CharacterOrientation>,
+        )>();
+
+        for (entity, transform, config, orientation_opt) in query.iter(world) {
+            let position = transform.translation().xy();
+            let orientation = orientation_opt.copied().unwrap_or_default();
+            let collision_groups = B::get_collision_groups(world, entity);
+
+            controllers.push((
+                entity,
+                position,
+                *config,
+                orientation,
+                collision_groups,
+            ));
+        }
+    }
+
+    // Perform wall detection
+    for (entity, position, config, orientation, collision_groups) in controllers {
+        let left = orientation.left();
+        let right = orientation.right();
+
+        // Compute rotation angle for the shape
+        let shape_rotation = orientation.angle();
+
+        // Use derived wall cast length
+        let wall_cast_length = config.wall_cast_length();
+
+        // Get the controller for updating
+        let Some(mut controller) = world.get_mut::<CharacterController>(entity) else {
+            continue;
+        };
+
+        // Shapecast left
+        if let Some(left_hit) = B::shapecast(
+            world,
+            position,
+            left,
+            wall_cast_length,
+            0.0, // width not used for wall detection
+            config.wall_cast_height,
+            shape_rotation,
+            entity,
+            collision_groups,
+        ) {
+            controller.touching_left_wall = true;
+            controller.left_wall_normal = left_hit.normal;
+        }
+
+        // Shapecast right
+        if let Some(right_hit) = B::shapecast(
+            world,
+            position,
+            right,
+            wall_cast_length,
+            0.0, // width not used for wall detection
+            config.wall_cast_height,
+            shape_rotation,
+            entity,
+            collision_groups,
+        ) {
+            controller.touching_right_wall = true;
+            controller.right_wall_normal = right_hit.normal;
+        }
+    }
+}
+
+/// Generic ceiling detection system using backend trait methods.
+/// Note: Currently not used for Rapier backend due to system parameter limitations.
+#[allow(dead_code)]
+pub fn generic_ceiling_detection<B: CharacterPhysicsBackend>(world: &mut World) {
+    // Collect query data
+    let mut controllers: Vec<(
+        Entity,
+        Vec2,
+        ControllerConfig,
+        CharacterOrientation,
+        f32, // effective_height
+        Option<(u32, u32)>, // collision groups
+    )> = Vec::new();
+
+    {
+        let mut query = world.query::<(
+            Entity,
+            &GlobalTransform,
+            &ControllerConfig,
+            Option<&CharacterOrientation>,
+            &CharacterController,
+        )>();
+
+        for (entity, transform, config, orientation_opt, controller) in query.iter(world) {
+            let position = transform.translation().xy();
+            let orientation = orientation_opt.copied().unwrap_or_default();
+            let effective_height = controller.effective_float_height(config);
+            let collision_groups = B::get_collision_groups(world, entity);
+
+            controllers.push((
+                entity,
+                position,
+                *config,
+                orientation,
+                effective_height,
+                collision_groups,
+            ));
+        }
+    }
+
+    // Perform ceiling detection
+    for (entity, position, config, orientation, effective_height, collision_groups) in controllers {
+        let up = orientation.up();
+
+        let shape_rotation = orientation.angle() - std::f32::consts::FRAC_PI_2;
+
+        // Calculate ceiling cast length using effective float height
+        let ceiling_cast_length = effective_height * config.ceiling_cast_multiplier;
+
+        // Get the controller for updating
+        let Some(mut controller) = world.get_mut::<CharacterController>(entity) else {
+            continue;
+        };
+
+        // Shapecast upward
+        if let Some(ceiling_hit) = B::shapecast(
+            world,
+            position,
+            up,
+            ceiling_cast_length,
+            config.ceiling_cast_width,
+            0.0, // height not used for ceiling detection
+            shape_rotation,
+            entity,
+            collision_groups,
+        ) {
+            controller.touching_ceiling = true;
+            controller.ceiling_normal = ceiling_hit.normal;
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn check_stair_step_generic<B: CharacterPhysicsBackend>(
+    world: &World,
+    entity: Entity,
+    position: Vec2,
+    velocity: Vec2,
+    orientation: &CharacterOrientation,
+    config: &StairConfig,
+    collision_groups: Option<(u32, u32)>,
+) -> Option<f32> {
+    let down = orientation.down();
+    let right = orientation.right();
+
+    // Project velocity onto horizontal axis and determine movement direction
+    let horizontal_vel = velocity.dot(right);
+    let move_dir = if horizontal_vel.abs() > 0.1 {
+        right * horizontal_vel.signum()
+    } else {
+        return None;
+    };
+
+    // Cast forward at step height (elevated in the "up" direction)
+    let step_origin = position - down * config.max_step_height;
+    let forward_hit = B::raycast(
+        world,
+        step_origin,
+        move_dir,
+        config.step_check_distance,
+        entity,
+        collision_groups,
+    );
+
+    // If no hit forward at step height, check down to find step top
+    if forward_hit.is_none() {
+        let check_origin = step_origin + move_dir * config.step_check_distance;
+        if let Some(down_hit) = B::raycast(
+            world,
+            check_origin,
+            down,
+            config.max_step_height + 2.0,
+            entity,
+            collision_groups,
+        ) {
+            if down_hit.distance < config.max_step_height {
+                return Some(config.max_step_height - down_hit.distance);
+            }
+        }
+    }
+
+    None
+}
+*/
