@@ -459,10 +459,11 @@ fn camera_follow(
 
 fn settings_ui(
     mut contexts: EguiContexts,
-    mut query: Query<&mut ControllerConfig, With<Player>>,
+    mut query: Query<(&mut ControllerConfig, &mut Transform, &mut Velocity), With<Player>>,
+    mut planet_config: ResMut<PlanetConfig>,
     mut frame_count: Local<u32>,
 ) {
-    let Ok(mut config) = query.single_mut() else {
+    let Ok((mut config, mut transform, mut velocity)) = query.single_mut() else {
         return;
     };
 
@@ -484,13 +485,42 @@ fn settings_ui(
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // Reload button at the top
-                if ui.button("⟳ Reset to Defaults").clicked() {
-                    *config = ControllerConfig::player()
-                        .with_float_height(PLAYER_HALF_HEIGHT)
-                        .with_ground_cast_width(PLAYER_RADIUS)
-                        .with_upright_torque_enabled(false);
-                }
+                ui.horizontal(|ui| {
+                    if ui.button("⟳ Reset to Defaults").clicked() {
+                        *config = ControllerConfig::player()
+                            .with_float_height(PLAYER_HALF_HEIGHT)
+                            .with_ground_cast_width(PLAYER_RADIUS)
+                            .with_upright_torque_enabled(false);
+                        planet_config.gravity_strength = GRAVITY_STRENGTH;
+                    }
+                    if ui.button("🔄 Respawn Player").clicked() {
+                        // Reset position to top of planet
+                        let spawn_angle = PI / 2.0;
+                        let direction = Vec2::new(spawn_angle.cos(), spawn_angle.sin());
+                        let surface_radius = planet_radius_at_angle(spawn_angle);
+                        let spawn_pos = PLANET_CENTER + direction * (surface_radius + 40.0);
+                        transform.translation = spawn_pos.extend(1.0);
+                        transform.rotation = Quat::IDENTITY;
+                        velocity.linvel = Vec2::ZERO;
+                        velocity.angvel = 0.0;
+                    }
+                });
                 ui.add_space(8.0);
+
+                // Planet Gravity Settings (takes effect immediately)
+                ui.collapsing("Planet Gravity", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Gravity Strength:");
+                        ui.add(
+                            egui::DragValue::new(&mut planet_config.gravity_strength)
+                                .speed(1.0)
+                                .range(0.0..=500.0),
+                        );
+                    });
+                    ui.label(format!("Current: {:.2} px/s² ({:.2} m/s²)",
+                        planet_config.gravity_strength,
+                        planet_config.gravity_strength / PIXELS_PER_METER));
+                });
 
                 // Float Settings
                 ui.collapsing("Float Settings", |ui| {

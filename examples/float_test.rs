@@ -268,10 +268,11 @@ fn camera_follow(
 
 fn settings_ui(
     mut contexts: EguiContexts,
-    mut query: Query<&mut ControllerConfig, With<Player>>,
+    mut query: Query<(&mut ControllerConfig, &mut CharacterController, &mut Transform, &mut Velocity), With<Player>>,
+    mut gravity_res: ResMut<Gravity>,
     mut frame_count: Local<u32>,
 ) {
-    let Ok(mut config) = query.single_mut() else {
+    let Ok((mut config, mut controller, mut transform, mut velocity)) = query.single_mut() else {
         return;
     };
 
@@ -293,13 +294,52 @@ fn settings_ui(
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // Reload button at the top
-                if ui.button("⟳ Reset to Defaults").clicked() {
-                    *config = ControllerConfig::player()
-                        .with_float_height(2.0)
-                        .with_spring(20000.0, 500.0)
-                        .with_ground_cast_width(PLAYER_RADIUS);
-                }
+                ui.horizontal(|ui| {
+                    if ui.button("⟳ Reset to Defaults").clicked() {
+                        *config = ControllerConfig::player()
+                            .with_float_height(2.0)
+                            .with_spring(20000.0, 500.0)
+                            .with_ground_cast_width(PLAYER_RADIUS);
+                        gravity_res.0 = Vec2::new(0.0, -980.0);
+                        controller.gravity = gravity_res.0;
+                    }
+                    if ui.button("🔄 Respawn Player").clicked() {
+                        // Reset position to spawn point (200 units above platform)
+                        let spawn_pos = Vec2::new(0.0, 200.0);
+                        transform.translation = spawn_pos.extend(1.0);
+                        velocity.linvel = Vec2::ZERO;
+                        velocity.angvel = 0.0;
+                    }
+                });
                 ui.add_space(8.0);
+
+                // Gravity Settings (synced to both Gravity resource and CharacterController)
+                ui.collapsing("Gravity Settings", |ui| {
+                    let mut changed = false;
+                    ui.horizontal(|ui| {
+                        ui.label("Gravity X:");
+                        if ui.add(
+                            egui::DragValue::new(&mut gravity_res.0.x)
+                                .speed(10.0)
+                                .range(-2000.0..=2000.0),
+                        ).changed() {
+                            changed = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Gravity Y:");
+                        if ui.add(
+                            egui::DragValue::new(&mut gravity_res.0.y)
+                                .speed(10.0)
+                                .range(-2000.0..=2000.0),
+                        ).changed() {
+                            changed = true;
+                        }
+                    });
+                    if changed {
+                        controller.gravity = gravity_res.0;
+                    }
+                });
 
                 // Float Settings
                 ui.collapsing("Float Settings", |ui| {

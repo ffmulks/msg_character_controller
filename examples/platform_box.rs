@@ -345,11 +345,11 @@ impl Default for UiState {
 
 fn settings_ui(
     mut contexts: EguiContexts,
-    mut query: Query<&mut ControllerConfig, With<Player>>,
+    mut query: Query<(&mut ControllerConfig, &mut CharacterController, &mut Transform, &mut Velocity), With<Player>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut ui_state: Local<UiState>,
 ) {
-    let Ok(mut config) = query.single_mut() else {
+    let Ok((mut config, mut controller, mut transform, mut velocity)) = query.single_mut() else {
         return;
     };
 
@@ -397,12 +397,42 @@ fn settings_ui(
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // Reload button at the top
-                if ui.button("⟳ Reset to Defaults").clicked() {
-                    *config = ControllerConfig::player()
-                        .with_float_height(15.0)
-                        .with_ground_cast_width(PLAYER_RADIUS);
-                }
+                ui.horizontal(|ui| {
+                    if ui.button("⟳ Reset to Defaults").clicked() {
+                        *config = ControllerConfig::player()
+                            .with_float_height(15.0)
+                            .with_ground_cast_width(PLAYER_RADIUS);
+                        controller.gravity = Vec2::new(0.0, -980.0);
+                    }
+                    if ui.button("🔄 Respawn Player").clicked() {
+                        // Reset position to spawn point
+                        let spawn_pos = Vec2::new(-200.0, -BOX_HEIGHT / 2.0 + WALL_THICKNESS + 50.0);
+                        transform.translation = spawn_pos.extend(1.0);
+                        velocity.linvel = Vec2::ZERO;
+                        velocity.angvel = 0.0;
+                    }
+                });
                 ui.add_space(8.0);
+
+                // Gravity Settings (stored in CharacterController, takes effect immediately)
+                ui.collapsing("Gravity Settings", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Gravity X:");
+                        ui.add(
+                            egui::DragValue::new(&mut controller.gravity.x)
+                                .speed(10.0)
+                                .range(-2000.0..=2000.0),
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Gravity Y:");
+                        ui.add(
+                            egui::DragValue::new(&mut controller.gravity.y)
+                                .speed(10.0)
+                                .range(-2000.0..=2000.0),
+                        );
+                    });
+                });
 
                 // Float Settings
                 ui.collapsing("Float Settings", |ui| {
