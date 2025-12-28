@@ -11,7 +11,7 @@
 //! - **Space**: Jump (to test if we can jump from floating position)
 
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_egui::input::EguiWantsInput;
 use bevy_rapier2d::prelude::*;
 use msg_character_controller::prelude::*;
@@ -42,14 +42,9 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            (
-                handle_input,
-                apply_gravity,
-                debug_floating,
-                camera_follow,
-                settings_ui,
-            ),
+            (handle_input, apply_gravity, debug_floating, camera_follow),
         )
+        .add_systems(EguiPrimaryContextPass, settings_ui)
         .run();
 }
 
@@ -274,23 +269,23 @@ fn camera_follow(
 fn settings_ui(
     mut contexts: EguiContexts,
     mut query: Query<&mut ControllerConfig, With<Player>>,
-    mut egui_initialized: Local<bool>,
+    mut frame_count: Local<u32>,
 ) {
     let Ok(mut config) = query.single_mut() else {
         return;
     };
 
+    // Increment frame counter
+    *frame_count += 1;
+
+    // Skip the first few frames to ensure egui is fully initialized
+    if *frame_count <= 2 {
+        return;
+    }
+
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
-
-    // Skip the first frame to ensure fonts are loaded
-    if !*egui_initialized {
-        *egui_initialized = true;
-        // Run an empty frame to initialize egui
-        let _ = ctx.run(egui::RawInput::default(), |_ctx| {});
-        return;
-    }
 
     egui::Window::new("Controller Settings")
         .default_pos([10.0, 50.0])

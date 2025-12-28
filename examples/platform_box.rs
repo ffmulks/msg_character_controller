@@ -15,7 +15,7 @@
 //! The camera follows the player.
 
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, EguiPlugin, egui};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 // Import the input checking resource
 use bevy_egui::input::EguiWantsInput;
 use bevy_rapier2d::prelude::*;
@@ -66,10 +66,8 @@ fn main() {
         .add_plugins(EguiPlugin::default())
         // Systems
         .add_systems(Startup, setup)
-        .add_systems(
-            Update,
-            (handle_input, apply_gravity, camera_follow, settings_ui),
-        )
+        .add_systems(Update, (handle_input, apply_gravity, camera_follow))
+        .add_systems(EguiPrimaryContextPass, settings_ui)
         .run();
 }
 
