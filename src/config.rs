@@ -146,11 +146,6 @@ pub struct CharacterController {
     /// Used for floating spring, extra fall gravity, and jump countering.
     pub gravity: Vec2,
 
-    // === Spring State ===
-    /// Whether the character left the spring range after a jump (for spring exception).
-    /// Reset when entering spring range again from above.
-    pub(crate) left_spring_range_after_jump: bool,
-
     // === Internal (used by systems, kept pub(crate)) ===
     /// Distance from collider center to bottom (auto-detected from Collider).
     /// For a capsule, this is half_height + radius.
@@ -172,8 +167,6 @@ impl Default for CharacterController {
             time_since_grounded: 0.0,
             // Gravity
             gravity: Vec2::new(0.0, -980.0),
-            // Spring state
-            left_spring_range_after_jump: false,
             // Internal
             collider_bottom_offset: 0.0,
         }

@@ -18,7 +18,6 @@ use crate::{GravityMode, GravityModeResource};
 /// Data collected for spring force calculation.
 struct SpringData {
     flying_up: bool,
-    jump_requested: bool,
 }
 
 /// Apply the floating spring force to maintain riding height.
@@ -28,6 +27,8 @@ struct SpringData {
 /// - Distance > capsule_half_height - EPSILON (physics collision threshold)
 ///
 /// The spring RESTORES the riding_height (float_height + capsule_half_height).
+/// - Below target (x > 0): Push UP to reach float height
+/// - Above target (x < 0): Push DOWN into tolerance zone
 ///
 /// Uses the formula: `springForce = (x * strength) - (relVel * damper)`
 /// where:
@@ -35,8 +36,7 @@ struct SpringData {
 /// - relVel = velocity component toward ground
 ///
 /// Exceptions (spring does not push up):
-/// - After a jump, while velocity is upward (reset when leaving spring range)
-/// - While flying upward
+/// - While actively flying upward (player input)
 pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
     // Collect entities that need floating spring
     let entities: Vec<(
@@ -52,13 +52,11 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
             Option<&CharacterOrientation>,
             &CharacterController,
             Option<&MovementIntent>,
-            Option<&JumpRequest>,
         )>()
         .iter(world)
-        .map(|(e, config, orientation, controller, movement, jump)| {
+        .map(|(e, config, orientation, controller, movement)| {
             let spring_data = SpringData {
                 flying_up: movement.map_or(false, |m| m.is_flying_up()),
-                jump_requested: jump.map_or(false, |j| j.requested && !j.consumed),
             };
             (
                 e,
@@ -99,19 +97,6 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         // Check if in spring range
         let in_spring_range = floor.distance <= max_spring_range && floor.distance > min_spring_range;
 
-        // Get current controller to update spring state
-        if let Some(mut ctrl) = world.get_mut::<CharacterController>(entity) {
-            // Track if we left spring range after jump
-            if !in_spring_range && ctrl.left_spring_range_after_jump == false {
-                // We're outside spring range now
-                ctrl.left_spring_range_after_jump = true;
-            }
-            if in_spring_range && ctrl.left_spring_range_after_jump {
-                // Re-entering spring range - reset the flag
-                ctrl.left_spring_range_after_jump = false;
-            }
-        }
-
         if !in_spring_range {
             // Apply extra fall gravity when outside spring range and falling
             let vertical_velocity = velocity.dot(up);
@@ -131,20 +116,19 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         let ground_normal = floor.normal;
         let rel_vel = -velocity.dot(ground_normal);
 
-        // Check if we should suppress upward spring force
-        let vertical_velocity = velocity.dot(up);
-        let suppress_upward_spring =
-            spring_data.flying_up || // Flying upward
-            (spring_data.jump_requested && vertical_velocity > 0.0) || // Just jumped
-            (controller.left_spring_range_after_jump == false && vertical_velocity > 0.0); // Post-jump rising
-
         // Spring force formula: springForce = (x * strength) - (relVel * damper)
+        // x > 0: below target → push UP
+        // x < 0: above target → push DOWN
         // Scale by mass_ratio so config values work consistently across different masses
         let spring_force = ((x * config.spring_strength) - (rel_vel * config.spring_damping)) * mass_ratio;
 
-        // Only apply upward force if not suppressed
-        if spring_force > 0.0 && suppress_upward_spring {
-            // Don't apply upward spring force during jump/fly up
+        // Only suppress upward spring during active flight upward
+        // Jumping is handled by the impulse system - spring should still work normally
+        let vertical_velocity = velocity.dot(up);
+        let suppress_upward = spring_data.flying_up && vertical_velocity > 0.0;
+
+        if spring_force > 0.0 && suppress_upward {
+            // Flying up - don't fight the player's input
         } else {
             let force = up * spring_force;
             B::apply_force(world, entity, force);
@@ -357,12 +341,9 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
             continue;
         }
 
-        // Consume the jump request and reset spring state
+        // Consume the jump request
         if let Some(mut jump) = world.get_mut::<JumpRequest>(entity) {
             jump.consume();
-        }
-        if let Some(mut ctrl) = world.get_mut::<CharacterController>(entity) {
-            ctrl.left_spring_range_after_jump = false;
         }
 
         // Calculate jump direction
