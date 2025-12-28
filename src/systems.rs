@@ -12,6 +12,12 @@ use crate::backend::CharacterPhysicsBackend;
 use crate::config::{CharacterController, CharacterOrientation, ControllerConfig};
 use crate::intent::{JumpRequest, PropulsionIntent, WalkIntent};
 use crate::state::{Airborne, Grounded, TouchingCeiling, TouchingWall};
+
+/// Data collected for cling force calculation.
+struct ClingData {
+    propulsion_active: bool,
+    jump_requested: bool,
+}
 use crate::{GravityMode, GravityModeResource};
 
 /// Apply the floating spring force to maintain float height.
@@ -22,26 +28,38 @@ use crate::{GravityMode, GravityModeResource};
 /// ground surface and prevent bouncing.
 pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
     // Collect entities that need floating spring
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController)> =
-        world
-            .query::<(
-                Entity,
-                &ControllerConfig,
-                Option<&CharacterOrientation>,
-                &CharacterController,
-            )>()
-            .iter(world)
-            .map(|(e, config, orientation, controller)| {
-                (
-                    e,
-                    *config,
-                    orientation.copied().unwrap_or_default(),
-                    controller.clone(),
-                )
-            })
-            .collect();
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        CharacterOrientation,
+        CharacterController,
+        ClingData,
+    )> = world
+        .query::<(
+            Entity,
+            &ControllerConfig,
+            Option<&CharacterOrientation>,
+            &CharacterController,
+            Option<&PropulsionIntent>,
+            Option<&JumpRequest>,
+        )>()
+        .iter(world)
+        .map(|(e, config, orientation, controller, propulsion, jump)| {
+            let cling_data = ClingData {
+                propulsion_active: propulsion.map_or(false, |p| p.is_active()),
+                jump_requested: jump.map_or(false, |j| j.requested && !j.consumed),
+            };
+            (
+                e,
+                *config,
+                orientation.copied().unwrap_or_default(),
+                controller.clone(),
+                cling_data,
+            )
+        })
+        .collect();
 
-    for (entity, config, orientation, controller) in entities {
+    for (entity, config, orientation, controller, cling_data) in entities {
         if !controller.ground_detected {
             continue;
         }
@@ -108,15 +126,23 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
             }
         }
 
-        // Apply cling force when above float height but within cling distance
-        // This helps the character stick to ground on bumpy terrain
-        // But skip if we're moving upward fast (probably jumping)
+        // Apply cling force when above float height but within cling distance.
+        // This pulls the character back toward ground when walking over tiny hills.
+        // Skip cling if propulsion or jumping is actively requested.
+        let requesting_upward_movement =
+            cling_data.propulsion_active || cling_data.jump_requested;
+
         if height_error < 0.0
             && controller.ground_distance <= effective_height + config.cling_distance
             && config.cling_strength > 0.0
-            && normal_velocity < 100.0
+            && !requesting_upward_movement
         {
-            let cling_force = gravity * config.cling_strength;
+            // Use negative spring force: pulls back toward float height.
+            // height_error is negative when above float height, so -height_error is positive.
+            // Force is applied in the -ground_normal direction (toward ground).
+            let cling_spring_force =
+                -height_error * config.spring_strength * config.cling_strength;
+            let cling_force = -ground_normal * cling_spring_force;
             B::apply_force(world, entity, cling_force);
         }
 
