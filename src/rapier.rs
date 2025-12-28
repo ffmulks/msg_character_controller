@@ -157,6 +157,20 @@ impl CharacterPhysicsBackend for Rapier2dBackend {
             .map(get_collider_bottom_offset)
             .unwrap_or(0.0)
     }
+
+    fn get_mass(world: &World, entity: Entity) -> f32 {
+        world.get::<ReadMassProperties>(entity)
+            .map(|props| props.mass)
+            .filter(|&m| m > 0.0 && m.is_finite())
+            .unwrap_or(1.0)
+    }
+
+    fn get_principal_inertia(world: &World, entity: Entity) -> f32 {
+        world.get::<ReadMassProperties>(entity)
+            .map(|props| props.principal_inertia)
+            .filter(|&i| i > 0.0 && i.is_finite())
+            .unwrap_or(1.0)
+    }
 }
 
 /// Plugin that sets up Rapier2D-specific systems for the character controller.
@@ -625,6 +639,8 @@ pub struct Rapier2dCharacterBundle {
     pub external_impulse: ExternalImpulse,
     pub locked_axes: LockedAxes,
     pub damping: Damping,
+    /// Computed mass properties - Rapier will update this based on collider
+    pub mass_properties: ReadMassProperties,
 }
 
 impl Rapier2dCharacterBundle {
@@ -640,6 +656,8 @@ impl Rapier2dCharacterBundle {
                 linear_damping: 0.5,
                 angular_damping: 1.0,
             },
+            // Rapier will update this based on collider after first physics step
+            mass_properties: ReadMassProperties::default(),
         }
     }
 

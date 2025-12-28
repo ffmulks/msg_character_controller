@@ -80,6 +80,17 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         let up = orientation.up();
         let gravity = controller.gravity;
 
+        // Calculate mass ratio for force scaling
+        // When config.mass is Some, forces are scaled so config parameters produce
+        // consistent acceleration. When None, apply forces without scaling.
+        let mass_ratio = match config.mass {
+            Some(config_mass) => {
+                let actual_mass = B::get_mass(world, entity);
+                actual_mass / config_mass.max(0.001)
+            }
+            None => 1.0, // No scaling - apply forces directly
+        };
+
         // Calculate riding height and spring thresholds
         let riding_height = controller.riding_height(&config);
         let max_spring_range = riding_height + config.ground_tolerance;
@@ -105,7 +116,7 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
             // Apply extra fall gravity when outside spring range and falling
             let vertical_velocity = velocity.dot(up);
             if vertical_velocity < 0.0 && config.extra_fall_gravity > 0.0 {
-                let extra_gravity_force = gravity * config.extra_fall_gravity;
+                let extra_gravity_force = gravity * config.extra_fall_gravity * mass_ratio;
                 B::apply_force(world, entity, extra_gravity_force);
             }
             continue;
@@ -128,7 +139,8 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
             (controller.left_spring_range_after_jump == false && vertical_velocity > 0.0); // Post-jump rising
 
         // Spring force formula: springForce = (x * strength) - (relVel * damper)
-        let spring_force = (x * config.spring_strength) - (rel_vel * config.spring_damping);
+        // Scale by mass_ratio so config values work consistently across different masses
+        let spring_force = ((x * config.spring_strength) - (rel_vel * config.spring_damping)) * mass_ratio;
 
         // Only apply upward force if not suppressed
         if spring_force > 0.0 && suppress_upward_spring {
@@ -143,7 +155,7 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
             let slope_factor = controller.slope_angle.sin();
             let normal_velocity = velocity.dot(ground_normal);
             if normal_velocity < 50.0 && x.abs() < config.ground_tolerance * 2.0 {
-                let snap_strength = config.spring_strength * 0.3 * slope_factor;
+                let snap_strength = config.spring_strength * 0.3 * slope_factor * mass_ratio;
                 let snap_force = -ground_normal * snap_strength;
                 B::apply_force(world, entity, snap_force);
             }
@@ -151,7 +163,7 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
 
         // Apply extra fall gravity when falling
         if vertical_velocity < 0.0 && config.extra_fall_gravity > 0.0 {
-            let extra_gravity_force = gravity * config.extra_fall_gravity;
+            let extra_gravity_force = gravity * config.extra_fall_gravity * mass_ratio;
             B::apply_force(world, entity, extra_gravity_force);
         }
     }
@@ -361,7 +373,21 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
         };
 
         // Apply jump impulse
-        let impulse = up * config.jump_speed;
+        // jump_speed is the desired velocity change. Impulse = mass * delta_v
+        // When config.mass is Some, we scale by actual mass to get consistent jump height.
+        // When None, we just apply jump_speed as the impulse (Rapier will divide by mass).
+        let impulse = match config.mass {
+            Some(_) => {
+                // Scale impulse so velocity change equals jump_speed
+                let actual_mass = B::get_mass(world, entity);
+                up * config.jump_speed * actual_mass
+            }
+            None => {
+                // No scaling - apply as impulse directly
+                // Note: Rapier divides by mass, so velocity change = jump_speed / mass
+                up * config.jump_speed
+            }
+        };
         B::apply_impulse(world, entity, impulse);
     }
 }
@@ -469,10 +495,15 @@ pub fn apply_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
             angle_error += consts::TAU;
         }
 
+        // Get inertia for scaling torque
+        // Scale by actual inertia so torque produces consistent angular acceleration
+        let actual_inertia = B::get_principal_inertia(world, entity);
+
         // Apply cubic spring-damper torque for stronger correction at large angles
+        // Scale by inertia so config values work consistently across different body shapes
         let spring_torque =
-            config.upright_torque_strength * angle_error * angle_error * angle_error.signum();
-        let damping_torque = -config.upright_torque_damping * angular_velocity;
+            config.upright_torque_strength * angle_error * angle_error * angle_error.signum() * actual_inertia;
+        let damping_torque = -config.upright_torque_damping * angular_velocity * actual_inertia;
 
         let total_torque = spring_torque + damping_torque;
         B::apply_torque(world, entity, total_torque);

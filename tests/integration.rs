@@ -588,7 +588,11 @@ mod movement {
         let mut app = create_test_app();
 
         spawn_ground(&mut app, Vec2::new(0.0, 0.0), Vec2::new(100.0, 5.0));
-        let character = spawn_character(&mut app, Vec2::new(0.0, 20.0));
+
+        // Use with_mass to enable velocity-based jump scaling
+        // This ensures jump_speed represents the actual velocity change
+        let config = ControllerConfig::default().with_mass(1.0);
+        let character = spawn_character_with_config(&mut app, Vec2::new(0.0, 20.0), config);
 
         run_frames(&mut app, 5);
 
@@ -609,10 +613,13 @@ mod movement {
             vel_before.y, vel_after.y
         );
 
-        // PROOF: Jump should apply positive Y velocity
+        // PROOF: Jump should apply positive Y velocity change
+        // With config.mass set, velocity_change = jump_speed regardless of actual body mass
+        // The impulse is scaled by actual_mass, and Rapier applies delta_v = impulse / mass
+        // So delta_v = (jump_speed * actual_mass) / actual_mass = jump_speed = 300
         assert!(
-            vel_after.y > vel_before.y + 10.0,
-            "Jump should apply upward velocity"
+            vel_after.y > vel_before.y + 100.0,
+            "Jump should apply significant upward velocity (~300 units/s)"
         );
     }
 }

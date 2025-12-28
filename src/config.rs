@@ -402,6 +402,22 @@ pub struct ControllerConfig {
     /// Width of ceiling detection shapecast.
     pub ceiling_cast_width: f32,
 
+    // === Mass Settings ===
+    /// Reference mass for force calculations.
+    ///
+    /// When `Some(mass)`, all force-based parameters (spring_strength, jump_speed,
+    /// upright_torque_strength) are scaled proportionally based on the actual
+    /// rigid body mass to produce consistent acceleration/velocity.
+    ///
+    /// When `None`, forces are applied using the actual rigid body mass directly
+    /// (no scaling). This is the recommended default as it works automatically
+    /// with Rapier's mass computed from collider geometry.
+    ///
+    /// For example, if `mass = Some(1.0)` and `jump_speed = 300.0`, a character
+    /// with actual mass 10.0 will receive an impulse of 3000.0 to achieve the
+    /// same jump velocity.
+    pub mass: Option<f32>,
+
     // === Jump Settings ===
     /// Jump impulse strength (applied as velocity).
     pub jump_speed: f32,
@@ -438,9 +454,9 @@ impl Default for ControllerConfig {
             cling_distance: 2.0, // distance for wall/ceiling detection
             cling_strength: 0.5,
 
-            // Spring settings
-            spring_strength: 8000.0,
-            spring_damping: 200.0,
+            // Spring settings (tuned for mass=1.0)
+            spring_strength: 500.0,
+            spring_damping: 30.0,
 
             // Movement settings
             max_speed: 100.0,
@@ -460,8 +476,11 @@ impl Default for ControllerConfig {
             ceiling_cast_multiplier: 2.0,
             ceiling_cast_width: 6.0,
 
+            // Mass setting (None = use actual Rapier mass)
+            mass: None,
+
             // Jump settings
-            jump_speed: 5000.0,
+            jump_speed: 300.0,
             coyote_time: 0.15,
             jump_buffer_time: 0.1,
             extra_fall_gravity: 1.0,
@@ -485,9 +504,10 @@ impl ControllerConfig {
     /// Create a config optimized for responsive player control.
     pub fn player() -> Self {
         Self {
-            spring_strength: 12000.0,
-            spring_damping: 300.0,
+            spring_strength: 800.0,
+            spring_damping: 50.0,
             acceleration: 1200.0,
+            jump_speed: 350.0,
             ..default()
         }
     }
@@ -495,8 +515,8 @@ impl ControllerConfig {
     /// Create a config for AI-controlled characters.
     pub fn ai() -> Self {
         Self {
-            spring_strength: 1500.0,
-            spring_damping: 75.0,
+            spring_strength: 300.0,
+            spring_damping: 20.0,
             acceleration: 600.0,
             air_control: 0.1,
             ..default()
@@ -595,6 +615,18 @@ impl ControllerConfig {
     /// Builder: set cling distance.
     pub fn with_cling_distance(mut self, distance: f32) -> Self {
         self.cling_distance = distance;
+        self
+    }
+
+    /// Builder: set reference mass.
+    ///
+    /// When set, forces will be scaled so that the config parameters produce
+    /// consistent behavior regardless of actual mass. This is useful when you
+    /// want the same config values to work across characters of different sizes.
+    ///
+    /// Leave as `None` (default) to use actual Rapier mass directly.
+    pub fn with_mass(mut self, mass: f32) -> Self {
+        self.mass = Some(mass);
         self
     }
 }
