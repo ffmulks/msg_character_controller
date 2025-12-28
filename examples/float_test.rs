@@ -11,6 +11,7 @@
 //! - **Space**: Jump (to test if we can jump from floating position)
 
 use bevy::prelude::*;
+use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_rapier2d::prelude::*;
 use msg_character_controller::prelude::*;
 
@@ -32,6 +33,8 @@ fn main() {
         .add_plugins(RapierDebugRenderPlugin::default())
         // Character controller
         .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
+        // Egui for settings UI
+        .add_plugins(EguiPlugin::default())
         // Resources
         .insert_resource(Gravity(Vec2::new(0.0, -980.0)))
         // Systems
@@ -43,6 +46,7 @@ fn main() {
                 apply_gravity,
                 debug_floating,
                 camera_follow,
+                settings_ui,
             ),
         )
         .run();
@@ -251,4 +255,167 @@ fn camera_follow(
 
     camera_transform.translation.x = player_transform.translation.x;
     camera_transform.translation.y = player_transform.translation.y;
+}
+
+// ==================== Settings UI ====================
+
+fn settings_ui(mut contexts: EguiContexts, mut query: Query<&mut ControllerConfig, With<Player>>) {
+    let Ok(mut config) = query.single_mut() else {
+        return;
+    };
+    let Some(ctx) = contexts.try_ctx_mut() else {
+        return;
+    };
+
+    egui::Window::new("Controller Settings")
+        .default_pos([10.0, 50.0])
+        .default_width(300.0)
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                // Reload button at the top
+                if ui.button("⟳ Reset to Defaults").clicked() {
+                    *config = ControllerConfig::player()
+                        .with_float_height(2.0)
+                        .with_spring(20000.0, 500.0)
+                        .with_ground_cast_width(PLAYER_RADIUS);
+                }
+                ui.add_space(8.0);
+
+                // Float Settings
+                ui.collapsing("Float Settings", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Float Height:");
+                        ui.add(egui::DragValue::new(&mut config.float_height).speed(0.1).range(0.0..=100.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Cling Distance:");
+                        ui.add(egui::DragValue::new(&mut config.cling_distance).speed(0.1).range(0.0..=50.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Cling Strength:");
+                        ui.add(egui::DragValue::new(&mut config.cling_strength).speed(0.01).range(0.0..=2.0));
+                    });
+                });
+
+                // Spring Settings
+                ui.collapsing("Spring Settings", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Spring Strength:");
+                        ui.add(egui::DragValue::new(&mut config.spring_strength).speed(100.0).range(0.0..=50000.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Spring Damping:");
+                        ui.add(egui::DragValue::new(&mut config.spring_damping).speed(10.0).range(0.0..=2000.0));
+                    });
+                });
+
+                // Movement Settings
+                ui.collapsing("Movement Settings", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Max Speed:");
+                        ui.add(egui::DragValue::new(&mut config.max_speed).speed(1.0).range(0.0..=1000.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Acceleration:");
+                        ui.add(egui::DragValue::new(&mut config.acceleration).speed(10.0).range(0.0..=5000.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Friction:");
+                        ui.add(egui::DragValue::new(&mut config.friction).speed(0.01).range(0.0..=1.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Air Control:");
+                        ui.add(egui::DragValue::new(&mut config.air_control).speed(0.01).range(0.0..=1.0));
+                    });
+                });
+
+                // Slope Settings
+                ui.collapsing("Slope Settings", |ui| {
+                    let mut angle_deg = config.max_slope_angle.to_degrees();
+                    ui.horizontal(|ui| {
+                        ui.label("Max Slope Angle (°):");
+                        if ui.add(egui::DragValue::new(&mut angle_deg).speed(1.0).range(0.0..=90.0)).changed() {
+                            config.max_slope_angle = angle_deg.to_radians();
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Uphill Gravity Mult:");
+                        ui.add(egui::DragValue::new(&mut config.uphill_gravity_multiplier).speed(0.1).range(0.0..=5.0));
+                    });
+                });
+
+                // Sensor Settings
+                ui.collapsing("Sensor Settings", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Ground Cast Mult:");
+                        ui.add(egui::DragValue::new(&mut config.ground_cast_multiplier).speed(0.1).range(1.0..=20.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Ground Cast Width:");
+                        ui.add(egui::DragValue::new(&mut config.ground_cast_width).speed(0.1).range(0.0..=50.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Wall Cast Mult:");
+                        ui.add(egui::DragValue::new(&mut config.wall_cast_multiplier).speed(0.1).range(0.0..=5.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Wall Cast Height:");
+                        ui.add(egui::DragValue::new(&mut config.wall_cast_height).speed(0.1).range(0.0..=50.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Ceiling Cast Mult:");
+                        ui.add(egui::DragValue::new(&mut config.ceiling_cast_multiplier).speed(0.1).range(0.0..=10.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Ceiling Cast Width:");
+                        ui.add(egui::DragValue::new(&mut config.ceiling_cast_width).speed(0.1).range(0.0..=50.0));
+                    });
+                });
+
+                // Jump Settings
+                ui.collapsing("Jump Settings", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Jump Speed:");
+                        ui.add(egui::DragValue::new(&mut config.jump_speed).speed(100.0).range(0.0..=20000.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Coyote Time:");
+                        ui.add(egui::DragValue::new(&mut config.coyote_time).speed(0.01).range(0.0..=1.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Jump Buffer Time:");
+                        ui.add(egui::DragValue::new(&mut config.jump_buffer_time).speed(0.01).range(0.0..=1.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Extra Fall Gravity:");
+                        ui.add(egui::DragValue::new(&mut config.extra_fall_gravity).speed(0.1).range(0.0..=10.0));
+                    });
+                });
+
+                // Upright Torque Settings
+                ui.collapsing("Upright Torque Settings", |ui| {
+                    ui.checkbox(&mut config.upright_torque_enabled, "Enabled");
+                    ui.horizontal(|ui| {
+                        ui.label("Torque Strength:");
+                        ui.add(egui::DragValue::new(&mut config.upright_torque_strength).speed(10.0).range(0.0..=1000.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Torque Damping:");
+                        ui.add(egui::DragValue::new(&mut config.upright_torque_damping).speed(1.0).range(0.0..=200.0));
+                    });
+                    let mut has_target = config.upright_target_angle.is_some();
+                    let mut target_deg = config.upright_target_angle.unwrap_or(0.0).to_degrees();
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut has_target, "Target Angle:").changed() {
+                            config.upright_target_angle = if has_target { Some(target_deg.to_radians()) } else { None };
+                        }
+                        if has_target {
+                            if ui.add(egui::DragValue::new(&mut target_deg).speed(1.0).range(-180.0..=180.0)).changed() {
+                                config.upright_target_angle = Some(target_deg.to_radians());
+                            }
+                        }
+                    });
+                });
+            });
+        });
 }
