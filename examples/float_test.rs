@@ -131,7 +131,7 @@ fn setup(mut commands: Commands) {
                 .with_float_height(float_height) // Gap between capsule bottom and ground
                 .with_spring(20000.0, 500.0) // VERY strong spring
                 .with_ground_cast_width(PLAYER_RADIUS),
-            WalkIntent::default(),
+            MovementIntent::default(),
             JumpRequest::default(),
         ))
         .insert((
@@ -154,18 +154,18 @@ fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     egui_wants_input: Res<EguiWantsInput>,
-    mut query: Query<(&mut WalkIntent, &mut JumpRequest), With<Player>>,
+    mut query: Query<(&mut MovementIntent, &mut JumpRequest), With<Player>>,
 ) {
     // Skip input handling if egui wants keyboard input
     if egui_wants_input.wants_any_keyboard_input() {
         // Clear any ongoing movement when egui takes focus
-        for (mut walk_intent, _) in &mut query {
-            walk_intent.set(0.0);
+        for (mut movement, _) in &mut query {
+            movement.clear();
         }
         return;
     }
 
-    for (mut walk_intent, mut jump_request) in &mut query {
+    for (mut movement, mut jump_request) in &mut query {
         // Horizontal movement
         let mut direction = 0.0;
         if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
@@ -174,7 +174,7 @@ fn handle_input(
         if keyboard.pressed(KeyCode::KeyD) || keyboard.pressed(KeyCode::ArrowRight) {
             direction += 1.0;
         }
-        walk_intent.set(direction);
+        movement.set_walk(direction);
 
         // Jump
         if keyboard.just_pressed(KeyCode::Space) {
