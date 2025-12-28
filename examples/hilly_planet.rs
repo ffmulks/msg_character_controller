@@ -17,6 +17,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_egui::input::EguiWantsInput;
 use bevy_rapier2d::prelude::*;
 use msg_character_controller::prelude::*;
 use std::f32::consts::{PI, TAU};
@@ -95,8 +96,7 @@ fn main() {
             (
                 update_player_orientation,
                 apply_planetary_gravity, // Gravity always applies (walking AND flying)
-            )
-                .before(msg_character_controller::systems::update_ground_detection::<Rapier2dBackend>),
+            ),
         )
         .add_systems(Update, (handle_input, camera_follow, settings_ui))
         .run();
@@ -128,6 +128,7 @@ fn setup(mut commands: Commands) {
             left: Val::Px(10.0),
             ..default()
         },
+        Pickable::IGNORE, // Prevent this UI element from blocking mouse clicks
     ));
 
     // Physics info
@@ -147,6 +148,7 @@ fn setup(mut commands: Commands) {
             left: Val::Px(10.0),
             ..default()
         },
+        Pickable::IGNORE, // Prevent this UI element from blocking mouse clicks
     ));
 
     // Propulsion info
@@ -163,6 +165,7 @@ fn setup(mut commands: Commands) {
             left: Val::Px(10.0),
             ..default()
         },
+        Pickable::IGNORE, // Prevent this UI element from blocking mouse clicks
     ));
 }
 
@@ -335,8 +338,19 @@ fn spawn_player(commands: &mut Commands) {
 fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    egui_wants_input: Res<EguiWantsInput>,
     mut query: Query<(&mut WalkIntent, &mut PropulsionIntent, &mut JumpRequest), With<Player>>,
 ) {
+    // Skip input handling if egui wants keyboard input
+    if egui_wants_input.wants_any_keyboard_input() {
+        // Clear any ongoing movement when egui takes focus
+        for (mut walk_intent, mut propulsion, _) in &mut query {
+            walk_intent.set(0.0);
+            propulsion.set(0.0);
+        }
+        return;
+    }
+
     for (mut walk_intent, mut propulsion, mut jump_request) in &mut query {
         // Horizontal input (A/D or Left/Right)
         let mut horizontal = 0.0;
@@ -442,13 +456,26 @@ fn camera_follow(
 
 // ==================== Settings UI ====================
 
-fn settings_ui(mut contexts: EguiContexts, mut query: Query<&mut ControllerConfig, With<Player>>) {
+fn settings_ui(
+    mut contexts: EguiContexts,
+    mut query: Query<&mut ControllerConfig, With<Player>>,
+    mut egui_initialized: Local<bool>,
+) {
     let Ok(mut config) = query.single_mut() else {
         return;
     };
-    let Some(ctx) = contexts.try_ctx_mut() else {
+
+    let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
+
+    // Skip the first frame to ensure fonts are loaded
+    if !*egui_initialized {
+        *egui_initialized = true;
+        // Run an empty frame to initialize egui
+        let _ = ctx.run(egui::RawInput::default(), |_ctx| {});
+        return;
+    }
 
     egui::Window::new("Controller Settings")
         .default_pos([10.0, 50.0])

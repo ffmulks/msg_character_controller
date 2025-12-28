@@ -5,7 +5,9 @@
       "Bash(cargo run:*)",
       "Bash(taskkill:*)",
       "Bash(powershell -Command:*)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(cargo doc:*)",
+      "Read(//c/Users/fmulk/.cargo/registry/src/**)"
     ],
     "deny": [],
     "ask": []
