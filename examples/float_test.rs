@@ -274,7 +274,6 @@ fn camera_follow(
 fn settings_ui(
     mut contexts: EguiContexts,
     mut query: Query<&mut ControllerConfig, With<Player>>,
-    mut egui_initialized: Local<bool>,
 ) {
     let Ok(mut config) = query.single_mut() else {
         return;
@@ -283,14 +282,6 @@ fn settings_ui(
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
-
-    // Skip the first frame to ensure fonts are loaded
-    if !*egui_initialized {
-        *egui_initialized = true;
-        // Run an empty frame to initialize egui
-        let _ = ctx.run(egui::RawInput::default(), |_ctx| {});
-        return;
-    }
 
     egui::Window::new("Controller Settings")
         .default_pos([10.0, 50.0])
