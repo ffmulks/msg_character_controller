@@ -14,11 +14,14 @@
 //!
 //! The camera follows the player.
 
+mod helpers;
+
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 // Import the input checking resource
 use bevy_egui::input::EguiWantsInput;
 use bevy_rapier2d::prelude::*;
+use helpers::{config_panel_ui, diagnostics_panel_ui, DiagnosticsData};
 use msg_character_controller::prelude::*;
 
 // ==================== Constants ====================
@@ -342,7 +345,7 @@ impl Default for UiState {
 
 fn settings_ui(
     mut contexts: EguiContexts,
-    mut query: Query<
+    mut config_query: Query<
         (
             &mut ControllerConfig,
             &mut CharacterController,
@@ -351,10 +354,25 @@ fn settings_ui(
         ),
         With<Player>,
     >,
+    diagnostics_query: Query<
+        (
+            &ControllerConfig,
+            &CharacterController,
+            &Transform,
+            &Velocity,
+            Option<&MovementIntent>,
+            Option<&JumpRequest>,
+            Option<&Grounded>,
+            Option<&TouchingWall>,
+            Option<&TouchingCeiling>,
+        ),
+        With<Player>,
+    >,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut ui_state: Local<UiState>,
 ) {
-    let Ok((mut config, mut controller, mut transform, mut velocity)) = query.single_mut() else {
+    let Ok((mut config, mut controller, mut transform, mut velocity)) = config_query.single_mut()
+    else {
         return;
     };
 
@@ -382,9 +400,9 @@ fn settings_ui(
             ui.colored_label(
                 egui::Color32::from_rgb(200, 200, 200),
                 if ui_state.show_settings {
-                    "Press TAB to hide settings | Settings window is VISIBLE"
+                    "Press TAB to hide panels"
                 } else {
-                    "Press TAB to show settings | Settings window is HIDDEN"
+                    "Press TAB to show panels"
                 },
             );
         });
@@ -393,295 +411,67 @@ fn settings_ui(
         return;
     }
 
+    // Controller Settings window
     egui::Window::new("Controller Settings")
-        .default_pos([400.0, 100.0])
-        .default_width(350.0)
-        .default_height(500.0)
+        .default_pos([10.0, 80.0])
+        .default_width(300.0)
+        .default_height(400.0)
         .collapsible(true)
         .resizable(true)
         .show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                // Reload button at the top
-                ui.horizontal(|ui| {
-                    if ui.button("⟳ Reset to Defaults").clicked() {
-                        *config = ControllerConfig::player()
-                            .with_float_height(15.0)
-                            .with_ground_cast_width(PLAYER_RADIUS);
-                        controller.gravity = Vec2::new(0.0, -980.0);
-                    }
-                    if ui.button("🔄 Respawn Player").clicked() {
-                        // Reset position to spawn point
-                        let spawn_pos =
-                            Vec2::new(-200.0, -BOX_HEIGHT / 2.0 + WALL_THICKNESS + 50.0);
-                        transform.translation = spawn_pos.extend(1.0);
-                        velocity.linvel = Vec2::ZERO;
-                        velocity.angvel = 0.0;
-                    }
-                });
-                ui.add_space(8.0);
-
-                // Gravity Settings (stored in CharacterController, takes effect immediately)
-                ui.collapsing("Gravity Settings", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Gravity X:");
-                        ui.add(
-                            egui::DragValue::new(&mut controller.gravity.x)
-                                .speed(10.0)
-                                .range(-2000.0..=2000.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Gravity Y:");
-                        ui.add(
-                            egui::DragValue::new(&mut controller.gravity.y)
-                                .speed(10.0)
-                                .range(-2000.0..=2000.0),
-                        );
-                    });
-                });
-
-                // Float Settings
-                ui.collapsing("Float Settings", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Float Height:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.float_height)
-                                .speed(0.1)
-                                .range(0.0..=100.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Cling Distance:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.cling_distance)
-                                .speed(0.1)
-                                .range(0.0..=50.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Cling Strength:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.cling_strength)
-                                .speed(0.01)
-                                .range(0.0..=2.0),
-                        );
-                    });
-                });
-
-                // Spring Settings
-                ui.collapsing("Spring Settings", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Spring Strength:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.spring_strength)
-                                .speed(100.0)
-                                .range(0.0..=50000.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Spring Damping:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.spring_damping)
-                                .speed(10.0)
-                                .range(0.0..=2000.0),
-                        );
-                    });
-                });
-
-                // Movement Settings
-                ui.collapsing("Movement Settings", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Max Speed:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.max_speed)
-                                .speed(1.0)
-                                .range(0.0..=1000.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Acceleration:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.acceleration)
-                                .speed(10.0)
-                                .range(0.0..=5000.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Friction:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.friction)
-                                .speed(0.01)
-                                .range(0.0..=1.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Air Control:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.air_control)
-                                .speed(0.01)
-                                .range(0.0..=1.0),
-                        );
-                    });
-                });
-
-                // Slope Settings
-                ui.collapsing("Slope Settings", |ui| {
-                    let mut angle_deg = config.max_slope_angle.to_degrees();
-                    ui.horizontal(|ui| {
-                        ui.label("Max Slope Angle (°):");
-                        if ui
-                            .add(
-                                egui::DragValue::new(&mut angle_deg)
-                                    .speed(1.0)
-                                    .range(0.0..=90.0),
-                            )
-                            .changed()
-                        {
-                            config.max_slope_angle = angle_deg.to_radians();
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Uphill Gravity Mult:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.uphill_gravity_multiplier)
-                                .speed(0.1)
-                                .range(0.0..=5.0),
-                        );
-                    });
-                });
-
-                // Sensor Settings
-                ui.collapsing("Sensor Settings", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Ground Cast Mult:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.ground_cast_multiplier)
-                                .speed(0.1)
-                                .range(1.0..=20.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Ground Cast Width:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.ground_cast_width)
-                                .speed(0.1)
-                                .range(0.0..=50.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Wall Cast Mult:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.wall_cast_multiplier)
-                                .speed(0.1)
-                                .range(0.0..=5.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Wall Cast Height:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.wall_cast_height)
-                                .speed(0.1)
-                                .range(0.0..=50.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Ceiling Cast Mult:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.ceiling_cast_multiplier)
-                                .speed(0.1)
-                                .range(0.0..=10.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Ceiling Cast Width:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.ceiling_cast_width)
-                                .speed(0.1)
-                                .range(0.0..=50.0),
-                        );
-                    });
-                });
-
-                // Jump Settings
-                ui.collapsing("Jump Settings", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Jump Speed:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.jump_speed)
-                                .speed(100.0)
-                                .range(0.0..=20000.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Coyote Time:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.coyote_time)
-                                .speed(0.01)
-                                .range(0.0..=1.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Jump Buffer Time:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.jump_buffer_time)
-                                .speed(0.01)
-                                .range(0.0..=1.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Extra Fall Gravity:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.extra_fall_gravity)
-                                .speed(0.1)
-                                .range(0.0..=10.0),
-                        );
-                    });
-                });
-
-                // Upright Torque Settings
-                ui.collapsing("Upright Torque Settings", |ui| {
-                    ui.checkbox(&mut config.upright_torque_enabled, "Enabled");
-                    ui.horizontal(|ui| {
-                        ui.label("Torque Strength:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.upright_torque_strength)
-                                .speed(10.0)
-                                .range(0.0..=1000.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Torque Damping:");
-                        ui.add(
-                            egui::DragValue::new(&mut config.upright_torque_damping)
-                                .speed(1.0)
-                                .range(0.0..=200.0),
-                        );
-                    });
-                    // upright_target_angle is Option<f32> - handle separately
-                    let mut has_target = config.upright_target_angle.is_some();
-                    let mut target_deg = config.upright_target_angle.unwrap_or(0.0).to_degrees();
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut has_target, "Target Angle:").changed() {
-                            config.upright_target_angle = if has_target {
-                                Some(target_deg.to_radians())
-                            } else {
-                                None
-                            };
-                        }
-                        if has_target {
-                            if ui
-                                .add(
-                                    egui::DragValue::new(&mut target_deg)
-                                        .speed(1.0)
-                                        .range(-180.0..=180.0),
-                                )
-                                .changed()
-                            {
-                                config.upright_target_angle = Some(target_deg.to_radians());
-                            }
-                        }
-                    });
-                });
+            // Reload button at the top
+            ui.horizontal(|ui| {
+                if ui.button("Reset to Defaults").clicked() {
+                    *config = ControllerConfig::player()
+                        .with_float_height(15.0)
+                        .with_ground_cast_width(PLAYER_RADIUS);
+                    controller.gravity = Vec2::new(0.0, -980.0);
+                }
+                if ui.button("Respawn").clicked() {
+                    // Reset position to spawn point
+                    let spawn_pos = Vec2::new(-200.0, -BOX_HEIGHT / 2.0 + WALL_THICKNESS + 50.0);
+                    transform.translation = spawn_pos.extend(1.0);
+                    velocity.linvel = Vec2::ZERO;
+                    velocity.angvel = 0.0;
+                }
             });
+            ui.add_space(8.0);
+
+            config_panel_ui(ui, &mut config, &mut controller);
         });
+
+    // Diagnostics window
+    if let Ok((
+        config_ref,
+        controller_ref,
+        transform_ref,
+        velocity_ref,
+        movement,
+        jump,
+        grounded,
+        wall,
+        ceiling,
+    )) = diagnostics_query.single()
+    {
+        egui::Window::new("Diagnostics")
+            .default_pos([320.0, 80.0])
+            .default_width(280.0)
+            .default_height(400.0)
+            .collapsible(true)
+            .resizable(true)
+            .show(ctx, |ui| {
+                let data = DiagnosticsData {
+                    controller: controller_ref,
+                    config: config_ref,
+                    transform: transform_ref,
+                    velocity: velocity_ref,
+                    movement_intent: movement,
+                    jump_request: jump,
+                    grounded: grounded.is_some(),
+                    touching_wall: wall,
+                    touching_ceiling: ceiling,
+                };
+                diagnostics_panel_ui(ui, &data);
+            });
+    }
 }
