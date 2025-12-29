@@ -97,9 +97,7 @@ pub mod prelude {
     pub use crate::CharacterControllerSet;
     pub use crate::backend::CharacterPhysicsBackend;
     pub use crate::collision::CollisionData;
-    pub use crate::config::{
-        CharacterController, CharacterOrientation, ControllerConfig, StairConfig,
-    };
+    pub use crate::config::{CharacterController, ControllerConfig, StairConfig};
     pub use crate::intent::{JumpRequest, MovementIntent};
 
     #[cfg(feature = "rapier2d")]
@@ -157,7 +155,6 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
     fn build(&self, app: &mut App) {
         // Register core types
         app.register_type::<config::CharacterController>();
-        app.register_type::<config::CharacterOrientation>();
         app.register_type::<config::ControllerConfig>();
         app.register_type::<config::StairConfig>();
         app.register_type::<intent::MovementIntent>();

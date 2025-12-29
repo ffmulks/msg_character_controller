@@ -278,10 +278,8 @@ fn spawn_player(
     let direction = Vec2::new(spawn_angle.cos(), spawn_angle.sin());
     let spawn_pos = PLANET_CENTER + direction * (PLANET_RADIUS + 50.0);
 
-    // Initial orientation pointing away from planet
-    let initial_orientation = CharacterOrientation::new(direction);
-
     // Initial gravity pointing toward planet center
+    // Up direction is derived from gravity via controller.ideal_up()
     let initial_gravity = -direction * GRAVITY_STRENGTH;
 
     // Create capsule mesh matching the collider
@@ -300,7 +298,6 @@ fn spawn_player(
             // Character controller with initial gravity pointing toward planet
             CharacterController::with_gravity(initial_gravity),
             default_config(),
-            initial_orientation,
             MovementIntent::default(),
         ))
         .insert((
@@ -320,35 +317,26 @@ fn spawn_player(
 
 // ==================== Planetary Systems ====================
 
-/// Updates the player's orientation and gravity to match the planet.
+/// Updates the player's gravity to match the planet.
 ///
-/// Orientation points away from the planet center (up = radially outward).
 /// Gravity points toward the planet center and is stored in CharacterController.
+/// The up direction is derived from gravity via controller.ideal_up().
 /// The internal gravity system then applies it when not grounded.
 fn update_player_orientation_and_gravity(
     planet: Res<PlanetConfig>,
-    mut query: Query<
-        (
-            &mut Transform,
-            &mut CharacterOrientation,
-            &mut CharacterController,
-        ),
-        With<Player>,
-    >,
+    mut query: Query<(&mut Transform, &mut CharacterController), With<Player>>,
 ) {
-    for (mut transform, mut orientation, mut controller) in &mut query {
+    for (mut transform, mut controller) in &mut query {
         let position = transform.translation.xy();
         let to_player = position - planet.center;
         let new_up = to_player.normalize_or_zero();
 
         if new_up != Vec2::ZERO {
-            // Update orientation to point away from planet
-            orientation.set_up(new_up);
-
             // Update gravity to point toward planet center
+            // Up direction is automatically derived from gravity via controller.ideal_up()
             controller.gravity = -new_up * planet.gravity_strength;
 
-            // Also rotate the transform to visually match orientation
+            // Rotate the transform to visually match the up direction
             let angle = new_up.to_angle() - std::f32::consts::FRAC_PI_2;
             transform.rotation = Quat::from_rotation_z(angle);
         }

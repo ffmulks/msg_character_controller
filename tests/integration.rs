@@ -61,20 +61,15 @@ fn spawn_character_with_config(app: &mut App, position: Vec2, config: Controller
         .id()
 }
 
-/// Spawn a character with custom orientation.
-fn spawn_oriented_character(
-    app: &mut App,
-    position: Vec2,
-    orientation: CharacterOrientation,
-) -> Entity {
+/// Spawn a character with custom gravity (which determines the up direction).
+fn spawn_character_with_gravity(app: &mut App, position: Vec2, gravity: Vec2) -> Entity {
     let transform = Transform::from_translation(position.extend(0.0));
     app.world_mut()
         .spawn((
             transform,
             GlobalTransform::from(transform),
-            CharacterController::new(),
+            CharacterController::with_gravity(gravity),
             ControllerConfig::default(),
-            orientation,
             MovementIntent::default(),
             Rapier2dCharacterBundle::rotation_locked(),
             Collider::capsule_y(8.0, 4.0),

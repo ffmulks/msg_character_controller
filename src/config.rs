@@ -11,97 +11,6 @@ use bevy_rapier2d::prelude::{ExternalForce, ExternalImpulse, ReadMassProperties}
 
 use crate::{collision::CollisionData, intent::MovementIntent};
 
-/// Defines the local coordinate system for a character controller.
-///
-/// This component allows characters to orient themselves relative to arbitrary
-/// "up" directions, enabling walking on rotating platforms, around planets,
-/// or on walls/ceilings.
-///
-/// The orientation is defined by a single `up` vector. The horizontal axes
-/// (left/right for walking, full 2D for flying) are derived perpendicular to `up`.
-#[derive(Component, Reflect, Debug, Clone, Copy)]
-#[reflect(Component)]
-pub struct CharacterOrientation {
-    /// The "up" direction for this character.
-    up: Vec2,
-}
-
-impl Default for CharacterOrientation {
-    fn default() -> Self {
-        Self { up: Vec2::Y }
-    }
-}
-
-impl CharacterOrientation {
-    /// Create a new orientation with the given up direction.
-    ///
-    /// The vector will be normalized. If zero-length, defaults to `Vec2::Y`.
-    pub fn new(up: Vec2) -> Self {
-        let normalized = up.normalize_or_zero();
-        Self {
-            up: if normalized == Vec2::ZERO {
-                Vec2::Y
-            } else {
-                normalized
-            },
-        }
-    }
-
-    /// Get the "up" direction.
-    #[inline]
-    pub fn up(&self) -> Vec2 {
-        self.up
-    }
-
-    /// Get the "down" direction (opposite of up).
-    #[inline]
-    pub fn down(&self) -> Vec2 {
-        -self.up
-    }
-
-    /// Get the "right" direction (perpendicular to up, clockwise).
-    #[inline]
-    pub fn right(&self) -> Vec2 {
-        Vec2::new(self.up.y, -self.up.x)
-    }
-
-    /// Get the "left" direction (perpendicular to up, counter-clockwise).
-    #[inline]
-    pub fn left(&self) -> Vec2 {
-        Vec2::new(-self.up.y, self.up.x)
-    }
-
-    /// Set the "up" direction.
-    pub fn set_up(&mut self, up: Vec2) {
-        let normalized = up.normalize_or_zero();
-        if normalized != Vec2::ZERO {
-            self.up = normalized;
-        }
-    }
-
-    /// Create an orientation from an angle (radians from world +X axis).
-    pub fn from_angle(angle: f32) -> Self {
-        Self {
-            up: Vec2::from_angle(angle),
-        }
-    }
-
-    /// Get the angle of the up direction (radians from world +X axis).
-    pub fn angle(&self) -> f32 {
-        self.up.to_angle()
-    }
-
-    /// Project a world-space vector into this orientation's local space.
-    pub fn to_local(&self, world_vec: Vec2) -> Vec2 {
-        Vec2::new(world_vec.dot(self.right()), world_vec.dot(self.up))
-    }
-
-    /// Convert a local-space vector to world space.
-    pub fn to_world(&self, local_vec: Vec2) -> Vec2 {
-        self.right() * local_vec.x + self.up * local_vec.y
-    }
-}
-
 /// Core character controller component.
 ///
 /// This is the **central hub** for all character controller state.
@@ -266,8 +175,8 @@ impl CharacterController {
     /// Get the ideal "up" direction for raycasts, derived from gravity.
     ///
     /// This returns the opposite of the normalized gravity vector.
-    /// Raycasts use this instead of CharacterOrientation to ensure they
-    /// work correctly regardless of the actor's physical rotation.
+    /// Raycasts use this to ensure they work correctly regardless of
+    /// the actor's physical rotation.
     ///
     /// If gravity is zero, defaults to `Vec2::Y`.
     #[inline]
@@ -670,7 +579,7 @@ pub struct ControllerConfig {
     /// Damping coefficient for the upright torque.
     pub upright_torque_damping: f32,
 
-    /// Target angle for upright torque (radians). None = use CharacterOrientation.
+    /// Target angle for upright torque (radians). None = derived from gravity via ideal_up_angle().
     pub upright_target_angle: Option<f32>,
 
     /// Maximum torque to apply for uprighting.
@@ -985,27 +894,6 @@ impl StairConfig {
 mod tests {
     use super::*;
     use std::f32::consts::FRAC_PI_2;
-
-    #[test]
-    fn orientation_default_is_world_up() {
-        let orientation = CharacterOrientation::default();
-        assert_eq!(orientation.up(), Vec2::Y);
-        assert_eq!(orientation.down(), Vec2::NEG_Y);
-        assert_eq!(orientation.right(), Vec2::X);
-        assert_eq!(orientation.left(), Vec2::NEG_X);
-    }
-
-    #[test]
-    fn orientation_new_normalizes_input() {
-        let orientation = CharacterOrientation::new(Vec2::new(0.0, 10.0));
-        assert!((orientation.up() - Vec2::Y).length() < 0.001);
-    }
-
-    #[test]
-    fn orientation_from_angle() {
-        let orientation = CharacterOrientation::from_angle(FRAC_PI_2);
-        assert!((orientation.up() - Vec2::Y).length() < 0.001);
-    }
 
     #[test]
     fn controller_new() {

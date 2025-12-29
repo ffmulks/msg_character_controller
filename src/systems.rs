@@ -22,7 +22,7 @@ use std::f32::consts;
 use bevy::prelude::*;
 
 use crate::backend::CharacterPhysicsBackend;
-use crate::config::{CharacterController, CharacterOrientation, ControllerConfig};
+use crate::config::{CharacterController, ControllerConfig};
 use crate::intent::MovementIntent;
 
 // ============================================================================
@@ -87,31 +87,18 @@ pub fn evaluate_intent<B: CharacterPhysicsBackend>(
 /// Upward spring forces always remain active.
 pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
 
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController)> =
-        world
-            .query::<(
-                Entity,
-                &ControllerConfig,
-                Option<&CharacterOrientation>,
-                &CharacterController,
-            )>()
-            .iter(world)
-            .map(|(e, config, orientation, controller)| {
-                (
-                    e,
-                    *config,
-                    orientation.copied().unwrap_or_default(),
-                    controller.clone(),
-                )
-            })
-            .collect();
+    let entities: Vec<(Entity, ControllerConfig, CharacterController)> = world
+        .query::<(Entity, &ControllerConfig, &CharacterController)>()
+        .iter(world)
+        .map(|(e, config, controller)| (e, *config, controller.clone()))
+        .collect();
 
-    for (entity, config, orientation, controller) in entities {
+    for (entity, config, controller) in entities {
         let Some(ref floor) = controller.floor else {
             continue;
         };
 
-        let up = orientation.up();
+        let up = controller.ideal_up();
         let velocity = B::get_velocity(world, entity);
         let vertical_velocity = velocity.dot(up);
 
@@ -206,26 +193,14 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
 /// When no step is detected, `active_stair_height` is reset to 0.
 pub fn accumulate_stair_climb_force<B: CharacterPhysicsBackend>(world: &mut World) {
     // Collect entities with stair config
-    let entities: Vec<(Entity, ControllerConfig, CharacterController, CharacterOrientation)> = world
-        .query::<(
-            Entity,
-            &ControllerConfig,
-            &CharacterController,
-            Option<&CharacterOrientation>,
-        )>()
+    let entities: Vec<(Entity, ControllerConfig, CharacterController)> = world
+        .query::<(Entity, &ControllerConfig, &CharacterController)>()
         .iter(world)
-        .filter(|(_, _, controller, _)| controller.stair_stepping_enabled())
-        .map(|(e, config, controller, orientation)| {
-            (
-                e,
-                *config,
-                controller.clone(),
-                orientation.copied().unwrap_or_default(),
-            )
-        })
+        .filter(|(_, _, controller)| controller.stair_stepping_enabled())
+        .map(|(e, config, controller)| (e, *config, controller.clone()))
         .collect();
 
-    for (entity, config, controller, orientation) in entities {
+    for (entity, config, controller) in entities {
         // Get stair config (we know it exists because of the filter)
         let stair_config = controller.stair_config.as_ref().unwrap();
 
@@ -244,7 +219,7 @@ pub fn accumulate_stair_climb_force<B: CharacterPhysicsBackend>(world: &mut Worl
             // Use max_spring_force * multiplier for responsive climbing
             let mass = B::get_mass(world, entity);
             let gravity_magnitude = controller.gravity.length();
-            let up = orientation.up();
+            let up = controller.ideal_up();
 
             // Calculate max spring force (same formula as floating spring system)
             let max_spring_force = config
@@ -310,38 +285,23 @@ pub fn accumulate_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
 /// For the floating controller, friction is simulated internally since the character
 /// hovers above the ground and doesn't use Rapier's contact friction.
 pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(
-        Entity,
-        ControllerConfig,
-        CharacterOrientation,
-        MovementIntent,
-        CharacterController,
-    )> = world
+    let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
         .query::<(
             Entity,
             &ControllerConfig,
-            Option<&CharacterOrientation>,
             &MovementIntent,
             &CharacterController,
         )>()
         .iter(world)
-        .map(|(e, config, orientation, intent, controller)| {
-            (
-                e,
-                *config,
-                orientation.copied().unwrap_or_default(),
-                *intent,
-                controller.clone(),
-            )
-        })
+        .map(|(e, config, intent, controller)| (e, *config, *intent, controller.clone()))
         .collect();
 
     let dt = B::get_fixed_timestep(world);
 
-    for (entity, config, orientation, intent, controller) in entities {
+    for (entity, config, intent, controller) in entities {
         let current_velocity = B::get_velocity(world, entity);
         let mass = B::get_mass(world, entity);
-        let right = orientation.right();
+        let right = controller.ideal_right();
 
         let is_grounded = controller.is_grounded(&config);
 
@@ -409,35 +369,25 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
 ///
 /// Flying downwards is disabled while grounded.
 pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(
-        Entity,
-        ControllerConfig,
-        CharacterOrientation,
-        MovementIntent,
-        CharacterController,
-    )> = world
+    let time = world
+        .get_resource::<Time>()
+        .map(|t| t.elapsed_secs())
+        .unwrap_or(0.0);
+
+    let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
         .query::<(
             Entity,
             &ControllerConfig,
-            Option<&CharacterOrientation>,
             &MovementIntent,
             &CharacterController,
         )>()
         .iter(world)
-        .map(|(e, config, orientation, intent, controller)| {
-            (
-                e,
-                *config,
-                orientation.copied().unwrap_or_default(),
-                *intent,
-                controller.clone(),
-            )
-        })
+        .map(|(e, config, intent, controller)| (e, *config, *intent, controller.clone()))
         .collect();
 
     let dt = B::get_fixed_timestep(world);
 
-    for (entity, config, orientation, intent, controller) in entities {
+    for (entity, config, intent, controller) in entities {
         let is_grounded = controller.is_grounded(&config);
 
         // Flying downwards is disabled while grounded
@@ -450,7 +400,7 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
 
         let current_velocity = B::get_velocity(world, entity);
         let mass = B::get_mass(world, entity);
-        let up = orientation.up();
+        let up = controller.ideal_up();
 
         let current_vertical = current_velocity.dot(up);
         let desired_vertical = intent.effective_fly() * config.max_speed;
@@ -493,40 +443,30 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
 /// Flying downwards is disabled while grounded.
 #[deprecated(since = "0.3.0", note = "Use apply_walk and apply_fly separately")]
 pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(
-        Entity,
-        ControllerConfig,
-        CharacterOrientation,
-        MovementIntent,
-        CharacterController,
-    )> = world
+    let time = world
+        .get_resource::<Time>()
+        .map(|t| t.elapsed_secs())
+        .unwrap_or(0.0);
+
+    let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
         .query::<(
             Entity,
             &ControllerConfig,
-            Option<&CharacterOrientation>,
             &MovementIntent,
             &CharacterController,
         )>()
         .iter(world)
-        .map(|(e, config, orientation, intent, controller)| {
-            (
-                e,
-                *config,
-                orientation.copied().unwrap_or_default(),
-                *intent,
-                controller.clone(),
-            )
-        })
+        .map(|(e, config, intent, controller)| (e, *config, *intent, controller.clone()))
         .collect();
 
     // Get fixed timestep delta
     let dt = B::get_fixed_timestep(world);
 
-    for (entity, config, orientation, intent, controller) in entities {
+    for (entity, config, intent, controller) in entities {
         let current_velocity = B::get_velocity(world, entity);
         let mass = B::get_mass(world, entity);
-        let up = orientation.up();
-        let right = orientation.right();
+        let up = controller.ideal_up();
+        let right = controller.ideal_right();
 
         let is_grounded = controller.is_grounded(&config);
 
@@ -631,40 +571,29 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
         .unwrap_or(0.0);
 
     // Collect entities with pending jump requests that can jump
-    let entities: Vec<(
-        Entity,
-        ControllerConfig,
-        CharacterOrientation,
-        CharacterController,
-    )> = world
+    let entities: Vec<(Entity, ControllerConfig, CharacterController)> = world
         .query::<(
             Entity,
             &ControllerConfig,
-            Option<&CharacterOrientation>,
             &CharacterController,
             &MovementIntent,
         )>()
         .iter(world)
-        .filter_map(|(e, config, orientation, controller, intent)| {
+        .filter_map(|(e, config, controller, intent)| {
             // Check if there's a valid jump request
             let jump = intent.jump_request.as_ref()?;
             let is_within_buffer = jump.is_within_buffer(time, config.jump_buffer_time);
             let can_jump_now = controller.is_grounded(config) || controller.in_coyote_time();
 
             if is_within_buffer && can_jump_now {
-                Some((
-                    e,
-                    *config,
-                    orientation.copied().unwrap_or_default(),
-                    controller.clone(),
-                ))
+                Some((e, *config, controller.clone()))
             } else {
                 None
             }
         })
         .collect();
 
-    for (entity, config, orientation, controller) in entities {
+    for (entity, config, controller) in entities {
         // Consume the jump request by taking it from MovementIntent
         if let Some(mut intent) = world.get_mut::<MovementIntent>(entity) {
             intent.take_jump_request();
@@ -674,7 +603,7 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
         let up = if controller.ground_detected() {
             controller.ground_normal()
         } else {
-            orientation.up()
+            controller.ideal_up()
         };
 
         // Apply jump impulse
@@ -699,25 +628,21 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
 ///
 /// For critical damping (no oscillation): `damping = 2 * sqrt(strength)`
 pub fn accumulate_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation)> = world
-        .query::<(
-            Entity,
-            &CharacterController,
-            &ControllerConfig,
-            Option<&CharacterOrientation>,
-        )>()
+    let entities: Vec<(Entity, ControllerConfig, CharacterController)> = world
+        .query::<(Entity, &CharacterController, &ControllerConfig)>()
         .iter(world)
-        .filter(|(_, _, config, _)| config.upright_torque_enabled)
-        .map(|(e, _, config, orientation)| (e, *config, orientation.copied().unwrap_or_default()))
+        .filter(|(_, _, config)| config.upright_torque_enabled)
+        .map(|(e, controller, config)| (e, *config, controller.clone()))
         .collect();
 
-    for (entity, config, orientation) in entities {
+    for (entity, config, controller) in entities {
         let current_rotation = B::get_rotation(world, entity);
         let angular_velocity = B::get_angular_velocity(world, entity);
 
+        // Target angle: if not specified, use ideal_up angle minus PI/2 to get the body rotation
         let target_angle = config
             .upright_target_angle
-            .unwrap_or_else(|| orientation.angle() - consts::FRAC_PI_2);
+            .unwrap_or_else(|| controller.ideal_up_angle() - consts::FRAC_PI_2);
 
         // Calculate angle error (shortest rotation to goal), normalized to [-PI, PI]
         let mut angle_error = target_angle - current_rotation;

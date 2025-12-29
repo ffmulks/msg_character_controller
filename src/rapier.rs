@@ -319,8 +319,8 @@ use crate::intent::MovementIntent;
 /// (which is float_height + capsule_half_height + ground_tolerance)
 ///
 /// **Important**: Raycasts use the "ideal up" direction derived from gravity,
-/// NOT from CharacterOrientation or the actor's Transform rotation. This ensures
-/// ground detection works correctly even when the actor is physically rotated.
+/// NOT from the actor's Transform rotation. This ensures ground detection
+/// works correctly even when the actor is physically rotated.
 fn rapier_ground_detection(
     rapier_context: ReadRapierContext,
     mut q_controllers: Query<(
@@ -439,7 +439,7 @@ fn rapier_ground_detection(
 /// (in the direction of movement intent) to detect steps.
 ///
 /// **Important**: Uses the "ideal up" direction derived from gravity, NOT from
-/// CharacterOrientation or the actor's Transform rotation.
+/// the actor's Transform rotation.
 ///
 /// Returns Some(step_height) if a climbable stair is detected, where step_height is
 /// the height above the current ground level that needs to be climbed.
@@ -562,8 +562,8 @@ fn get_collider_radius(collider: &Collider) -> f32 {
 /// Wall cast length: cling_distance + radius
 ///
 /// **Important**: Raycasts use the "ideal up" direction derived from gravity,
-/// NOT from CharacterOrientation or the actor's Transform rotation. This ensures
-/// wall detection works correctly even when the actor is physically rotated.
+/// NOT from the actor's Transform rotation. This ensures wall detection
+/// works correctly even when the actor is physically rotated.
 fn rapier_wall_detection(
     rapier_context: ReadRapierContext,
     mut q_controllers: Query<(
@@ -636,8 +636,8 @@ fn rapier_wall_detection(
 /// Ceiling cast length: cling_distance + capsule_half_height
 ///
 /// **Important**: Raycasts use the "ideal up" direction derived from gravity,
-/// NOT from CharacterOrientation or the actor's Transform rotation. This ensures
-/// ceiling detection works correctly even when the actor is physically rotated.
+/// NOT from the actor's Transform rotation. This ensures ceiling detection
+/// works correctly even when the actor is physically rotated.
 fn rapier_ceiling_detection(
     rapier_context: ReadRapierContext,
     mut q_controllers: Query<(
