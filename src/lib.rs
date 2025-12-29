@@ -26,8 +26,8 @@
 //! Systems run in clearly defined phases using [`CharacterControllerSet`]:
 //!
 //! 1. **Preparation** - Clear forces from previous frame
-//! 2. **IntentEvaluation** - Read MovementIntent, set intent flags
-//! 3. **Sensors** - Collect ground/wall/ceiling data (run in parallel)
+//! 2. **Sensors** - Collect ground/wall/ceiling data (run in parallel)
+//! 3. **IntentEvaluation** - Read MovementIntent, set intent flags (requires current sensor data)
 //! 4. **ForceAccumulation** - Spring, gravity, stair climb, upright torque
 //! 5. **IntentApplication** - Apply jump, walk, fly based on intent
 //! 6. **FinalApplication** - Apply accumulated forces to physics
@@ -62,8 +62,8 @@ pub mod rapier;
 /// These sets define the order of operations for the character controller:
 ///
 /// 1. **Preparation** - Clear forces from previous frame
-/// 2. **IntentEvaluation** - Read MovementIntent, set intent flags (e.g., intends_upward_propulsion)
-/// 3. **Sensors** - Collect ground/wall/ceiling data (systems can run in parallel)
+/// 2. **Sensors** - Collect ground/wall/ceiling data (systems can run in parallel)
+/// 3. **IntentEvaluation** - Read MovementIntent, set intent flags (requires current sensor data)
 /// 4. **ForceAccumulation** - Accumulate spring, gravity, stair climb, upright torque forces
 /// 5. **IntentApplication** - Apply jump, walk, fly impulses based on intent
 /// 6. **FinalApplication** - Apply accumulated forces to physics engine
@@ -76,11 +76,12 @@ pub mod rapier;
 pub enum CharacterControllerSet {
     /// Phase 1: Clear forces from previous frame.
     Preparation,
-    /// Phase 2: Evaluate MovementIntent and set intent flags.
-    IntentEvaluation,
-    /// Phase 3: Collect sensor data (ground, wall, ceiling detection).
+    /// Phase 2: Collect sensor data (ground, wall, ceiling detection).
     /// Systems in this phase can run in parallel.
     Sensors,
+    /// Phase 3: Evaluate MovementIntent and set intent flags.
+    /// Runs after Sensors so it has access to current frame's floor/grounded state.
+    IntentEvaluation,
     /// Phase 4: Accumulate forces (spring, gravity, stair climb, upright torque).
     ForceAccumulation,
     /// Phase 5: Apply intent-based impulses (jump, walk, fly).
@@ -165,13 +166,16 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
         app.add_plugins(B::plugin());
 
         // Configure system set ordering
-        // Phase order: Preparation -> IntentEvaluation -> Sensors -> ForceAccumulation -> IntentApplication -> FinalApplication
+        // Phase order: Preparation -> Sensors -> IntentEvaluation -> ForceAccumulation -> IntentApplication -> FinalApplication
+        // NOTE: Sensors must run BEFORE IntentEvaluation so that intent evaluation
+        // has access to current frame's floor/grounded state. This ensures that
+        // intends_upward_propulsion is correctly set before spring forces are calculated.
         app.configure_sets(
             FixedUpdate,
             (
                 CharacterControllerSet::Preparation,
-                CharacterControllerSet::IntentEvaluation,
                 CharacterControllerSet::Sensors,
+                CharacterControllerSet::IntentEvaluation,
                 CharacterControllerSet::ForceAccumulation,
                 CharacterControllerSet::IntentApplication,
                 CharacterControllerSet::FinalApplication,
@@ -179,9 +183,9 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
                 .chain()
         );
 
-        // Phase 2: Intent Evaluation
+        // Phase 3: Intent Evaluation
         // Evaluate MovementIntent and set intent flags (e.g., intends_upward_propulsion)
-        // This runs BEFORE sensors so downstream systems can use intent information
+        // This runs AFTER sensors so it has access to current frame's floor/grounded state
         app.add_systems(
             FixedUpdate,
             systems::evaluate_intent::<B>.in_set(CharacterControllerSet::IntentEvaluation),
