@@ -4,9 +4,9 @@
 //! Enable with the `rapier2d` feature.
 
 use bevy::prelude::*;
+use bevy_rapier2d::geometry::Group;
 use bevy_rapier2d::parry::shape::Segment;
 use bevy_rapier2d::prelude::*;
-use bevy_rapier2d::geometry::Group;
 
 use crate::backend::CharacterPhysicsBackend;
 use crate::collision::CollisionData;
@@ -148,25 +148,29 @@ impl CharacterPhysicsBackend for Rapier2dBackend {
     }
 
     fn get_collision_groups(world: &World, entity: Entity) -> Option<(u32, u32)> {
-        world.get::<CollisionGroups>(entity)
+        world
+            .get::<CollisionGroups>(entity)
             .map(|cg| (cg.memberships.bits(), cg.filters.bits()))
     }
 
     fn get_collider_bottom_offset(world: &World, entity: Entity) -> f32 {
-        world.get::<Collider>(entity)
+        world
+            .get::<Collider>(entity)
             .map(get_collider_bottom_offset)
             .unwrap_or(0.0)
     }
 
     fn get_mass(world: &World, entity: Entity) -> f32 {
-        world.get::<ReadMassProperties>(entity)
+        world
+            .get::<ReadMassProperties>(entity)
             .map(|props| props.mass)
             .filter(|&m| m > 0.0 && m.is_finite())
             .unwrap_or(1.0)
     }
 
     fn get_principal_inertia(world: &World, entity: Entity) -> f32 {
-        world.get::<ReadMassProperties>(entity)
+        world
+            .get::<ReadMassProperties>(entity)
             .map(|props| props.principal_inertia)
             .filter(|&i| i > 0.0 && i.is_finite())
             .unwrap_or(1.0)
@@ -190,15 +194,8 @@ impl Plugin for Rapier2dBackendPlugin {
                 .chain()
                 .before(crate::systems::apply_floating_spring::<Rapier2dBackend>),
         );
-
-        // Ensure external force/impulse are reset each frame
-        app.add_systems(
-            FixedPostUpdate,
-            reset_external_forces.after(crate::systems::reset_jump_requests),
-        );
     }
 }
-
 
 /// Get the distance from collider center to bottom for a given collider.
 /// For capsules, this is half_height + radius.
@@ -263,24 +260,26 @@ fn rapier_shapecast(
     }
 
     // Perform the shapecast
-    context.cast_shape(
-        origin,
-        shape_rotation,
-        direction,
-        &shape,
-        ShapeCastOptions {
-            max_time_of_impact: max_distance,
-            stop_at_penetration: false,
-            ..default()
-        },
-        filter,
-    ).map(|(hit_entity, hit)| {
-        // Extract normal from hit details or use default
-        let normal = hit.details.map(|d| d.normal1).unwrap_or(-direction);
-        // Calculate hit point
-        let hit_point = origin + direction * hit.time_of_impact;
-        CollisionData::new(hit.time_of_impact, normal, hit_point, Some(hit_entity))
-    })
+    context
+        .cast_shape(
+            origin,
+            shape_rotation,
+            direction,
+            &shape,
+            ShapeCastOptions {
+                max_time_of_impact: max_distance,
+                stop_at_penetration: false,
+                ..default()
+            },
+            filter,
+        )
+        .map(|(hit_entity, hit)| {
+            // Extract normal from hit details or use default
+            let normal = hit.details.map(|d| d.normal1).unwrap_or(-direction);
+            // Calculate hit point
+            let hit_point = origin + direction * hit.time_of_impact;
+            CollisionData::new(hit.time_of_impact, normal, hit_point, Some(hit_entity))
+        })
 }
 
 /// Perform a raycast using RapierContext.
@@ -303,19 +302,21 @@ fn rapier_raycast(
     }
 
     // Perform the raycast
-    context.cast_ray(
-        origin,
-        direction,
-        max_distance,
-        true, // solid = true for solid hits
-        filter,
-    ).map(|(hit_entity, toi)| {
-        // Calculate hit point
-        let hit_point = origin + direction * toi;
-        // For a simple ray, we approximate the normal as opposite of ray direction
-        let normal = -direction;
-        CollisionData::new(toi, normal, hit_point, Some(hit_entity))
-    })
+    context
+        .cast_ray(
+            origin,
+            direction,
+            max_distance,
+            true, // solid = true for solid hits
+            filter,
+        )
+        .map(|(hit_entity, toi)| {
+            // Calculate hit point
+            let hit_point = origin + direction * toi;
+            // For a simple ray, we approximate the normal as opposite of ray direction
+            let normal = -direction;
+            CollisionData::new(toi, normal, hit_point, Some(hit_entity))
+        })
 }
 
 /// Rapier-specific ground detection system using shapecast.
@@ -344,23 +345,29 @@ fn rapier_ground_detection(
     let default_orientation = CharacterOrientation::default();
     let dt = time.delta_secs();
 
-    for (entity, transform, config, orientation_opt, stair_config, velocity, mut controller, collision_groups, collider) in
-        &mut q_controllers
+    for (
+        entity,
+        transform,
+        config,
+        orientation_opt,
+        stair_config,
+        velocity,
+        mut controller,
+        collision_groups,
+        collider,
+    ) in &mut q_controllers
     {
         let position = transform.translation().xy();
 
         // Update collider_bottom_offset from actual collider dimensions
-        controller.collider_bottom_offset = collider
-            .map(get_collider_bottom_offset)
-            .unwrap_or(0.0);
+        controller.collider_bottom_offset = collider.map(get_collider_bottom_offset).unwrap_or(0.0);
 
         // Get orientation (use default if component not present)
         let orientation = orientation_opt.unwrap_or(&default_orientation);
         let down = orientation.down();
 
         // Inherit collision groups from parent's collider
-        let collision_groups_tuple = collision_groups
-            .map(|cg| (cg.memberships, cg.filters));
+        let collision_groups_tuple = collision_groups.map(|cg| (cg.memberships, cg.filters));
 
         // Calculate ground cast length:
         // riding_height + ground_tolerance = float_height + capsule_half_height + ground_tolerance
@@ -525,8 +532,7 @@ fn rapier_wall_detection(
         let right = orientation.right();
 
         // Inherit collision groups from parent's collider
-        let collision_groups_tuple = collision_groups
-            .map(|cg| (cg.memberships, cg.filters));
+        let collision_groups_tuple = collision_groups.map(|cg| (cg.memberships, cg.filters));
 
         // Compute rotation angle for the shape
         let shape_rotation = orientation.angle();
@@ -597,8 +603,7 @@ fn rapier_ceiling_detection(
         let up = orientation.up();
 
         // Inherit collision groups from parent's collider
-        let collision_groups_tuple = collision_groups
-            .map(|cg| (cg.memberships, cg.filters));
+        let collision_groups_tuple = collision_groups.map(|cg| (cg.memberships, cg.filters));
 
         let shape_rotation = orientation.angle() - std::f32::consts::FRAC_PI_2;
 

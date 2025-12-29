@@ -225,8 +225,7 @@ fn spawn_player(commands: &mut Commands) {
             Velocity::default(),
             ExternalForce::default(),
             ExternalImpulse::default(),
-            LockedAxes::ROTATION_LOCKED,
-            Collider::capsule_y(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS),
+            Collider::capsule_y(PLAYER_HALF_HEIGHT, PLAYER_RADIUS),
             GravityScale(0.0), // We apply gravity manually
             Damping {
                 linear_damping: 0.0,
@@ -343,7 +342,15 @@ impl Default for UiState {
 
 fn settings_ui(
     mut contexts: EguiContexts,
-    mut query: Query<(&mut ControllerConfig, &mut CharacterController, &mut Transform, &mut Velocity), With<Player>>,
+    mut query: Query<
+        (
+            &mut ControllerConfig,
+            &mut CharacterController,
+            &mut Transform,
+            &mut Velocity,
+        ),
+        With<Player>,
+    >,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut ui_state: Local<UiState>,
 ) {
@@ -404,7 +411,8 @@ fn settings_ui(
                     }
                     if ui.button("🔄 Respawn Player").clicked() {
                         // Reset position to spawn point
-                        let spawn_pos = Vec2::new(-200.0, -BOX_HEIGHT / 2.0 + WALL_THICKNESS + 50.0);
+                        let spawn_pos =
+                            Vec2::new(-200.0, -BOX_HEIGHT / 2.0 + WALL_THICKNESS + 50.0);
                         transform.translation = spawn_pos.extend(1.0);
                         velocity.linvel = Vec2::ZERO;
                         velocity.angvel = 0.0;
