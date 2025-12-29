@@ -452,7 +452,6 @@ pub fn config_panel_ui(
     ui: &mut egui::Ui,
     config: &mut ControllerConfig,
     controller: &mut CharacterController,
-    stair_config: Option<&mut StairConfig>,
 ) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         gravity_settings_ui(ui, controller);
@@ -463,7 +462,7 @@ pub fn config_panel_ui(
         sensor_settings_ui(ui, config);
         jump_settings_ui(ui, config);
         upright_torque_settings_ui(ui, config);
-        if let Some(stair_cfg) = stair_config {
+        if let Some(stair_cfg) = controller.stair_config.as_mut() {
             stair_settings_ui(ui, stair_cfg);
         }
     });

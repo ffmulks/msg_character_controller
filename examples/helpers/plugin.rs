@@ -382,7 +382,6 @@ fn character_controller_settings_ui_system<M: Component>(
             &mut ExternalImpulse,
             &mut ExternalForce,
             &mut MovementIntent,
-            Option<&mut StairConfig>,
         ),
         With<M>,
     >,
@@ -417,7 +416,6 @@ fn character_controller_settings_ui_system<M: Component>(
         mut external_impulse,
         mut external_force,
         mut movement_intent,
-        mut stair_config,
     )) = config_query.single_mut()
     else {
         return;
@@ -452,12 +450,7 @@ fn character_controller_settings_ui_system<M: Component>(
                 ui.add_space(8.0);
 
                 // Standard config panel
-                config_panel_ui(
-                    ui,
-                    &mut config,
-                    &mut controller,
-                    stair_config.as_deref_mut(),
-                );
+                config_panel_ui(ui, &mut config, &mut controller);
             });
         });
 }
