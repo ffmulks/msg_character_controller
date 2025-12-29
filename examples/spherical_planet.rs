@@ -112,7 +112,7 @@ fn main() {
             FixedUpdate,
             // Update orientation and gravity before controller systems
             update_player_orientation_and_gravity.before(
-                msg_character_controller::systems::apply_floating_spring::<Rapier2dBackend>,
+                msg_character_controller::systems::accumulate_spring_force::<Rapier2dBackend>,
             ),
         )
         .add_systems(Update, camera_follow)
@@ -400,29 +400,29 @@ fn planet_gravity_settings_ui(
         return;
     };
 
-    // Add planet gravity settings to the same "Controller Settings" window
-    egui::Window::new("Controller Settings")
-        .default_pos([10.0, 80.0])
+    // Planet-specific settings in a separate window
+    egui::Window::new("Planet Settings")
+        .default_pos([10.0, 500.0])
         .default_width(300.0)
+        .collapsible(true)
         .show(ctx, |ui| {
-            // Planet Gravity Settings (custom for this example)
-            ui.collapsing("Planet Gravity", |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Gravity Strength:");
-                    ui.add(
-                        egui::DragValue::new(&mut planet_config.gravity_strength)
-                            .speed(10.0)
-                            .range(0.0..=2000.0),
-                    );
-                });
-                ui.label(format!(
-                    "Current: {:.1} px/s²",
-                    planet_config.gravity_strength
-                ));
-                ui.add_space(4.0);
-                if ui.button("Reset Planet Gravity").clicked() {
-                    planet_config.gravity_strength = GRAVITY_STRENGTH;
-                }
+            ui.heading("Planet Gravity");
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("Gravity Strength:");
+                ui.add(
+                    egui::DragValue::new(&mut planet_config.gravity_strength)
+                        .speed(10.0)
+                        .range(0.0..=2000.0),
+                );
             });
+            ui.label(format!(
+                "Current: {:.1} px/s²",
+                planet_config.gravity_strength
+            ));
+            ui.add_space(4.0);
+            if ui.button("Reset Planet Gravity").clicked() {
+                planet_config.gravity_strength = GRAVITY_STRENGTH;
+            }
         });
 }
