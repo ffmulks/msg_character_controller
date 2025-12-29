@@ -284,6 +284,14 @@ pub fn jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                     .range(0.0..=100.0),
             );
         });
+        ui.horizontal(|ui| {
+            ui.label("Spring Filter Duration:");
+            ui.add(
+                egui::DragValue::new(&mut config.jump_spring_filter_duration)
+                    .speed(0.01)
+                    .range(0.0..=1.0),
+            );
+        });
     });
 }
 
@@ -381,6 +389,61 @@ pub fn upright_torque_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConf
     });
 }
 
+/// Renders the stair climbing settings collapsible section.
+pub fn stair_settings_ui(ui: &mut egui::Ui, stair_config: &mut StairConfig) {
+    ui.collapsing("Stair Climbing Settings", |ui| {
+        ui.checkbox(&mut stair_config.enabled, "Enabled");
+        ui.horizontal(|ui| {
+            ui.label("Max Climb Height:");
+            ui.add(
+                egui::DragValue::new(&mut stair_config.max_climb_height)
+                    .speed(0.5)
+                    .range(0.0..=50.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Min Step Depth:");
+            ui.add(
+                egui::DragValue::new(&mut stair_config.min_step_depth)
+                    .speed(0.5)
+                    .range(0.0..=20.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Stair Cast Width:");
+            ui.add(
+                egui::DragValue::new(&mut stair_config.stair_cast_width)
+                    .speed(0.5)
+                    .range(0.0..=20.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Stair Cast Offset:");
+            ui.add(
+                egui::DragValue::new(&mut stair_config.stair_cast_offset)
+                    .speed(0.1)
+                    .range(0.0..=10.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Stair Tolerance:");
+            ui.add(
+                egui::DragValue::new(&mut stair_config.stair_tolerance)
+                    .speed(0.1)
+                    .range(0.0..=10.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Climb Force Mult:");
+            ui.add(
+                egui::DragValue::new(&mut stair_config.climb_force_multiplier)
+                    .speed(0.1)
+                    .range(0.0..=10.0),
+            );
+        });
+    });
+}
+
 /// Renders the complete config panel with all settings sections.
 ///
 /// This is a convenience function that renders all configuration sections
@@ -389,6 +452,7 @@ pub fn config_panel_ui(
     ui: &mut egui::Ui,
     config: &mut ControllerConfig,
     controller: &mut CharacterController,
+    stair_config: Option<&mut StairConfig>,
 ) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         gravity_settings_ui(ui, controller);
@@ -399,5 +463,8 @@ pub fn config_panel_ui(
         sensor_settings_ui(ui, config);
         jump_settings_ui(ui, config);
         upright_torque_settings_ui(ui, config);
+        if let Some(stair_cfg) = stair_config {
+            stair_settings_ui(ui, stair_cfg);
+        }
     });
 }
