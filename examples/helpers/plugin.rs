@@ -4,12 +4,12 @@
 //! panels for character controllers using egui.
 
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use bevy_rapier2d::prelude::{ExternalForce, ExternalImpulse, Velocity};
 use msg_character_controller::prelude::*;
 use std::marker::PhantomData;
 
-use super::{config_panel_ui, diagnostics_panel_ui, DiagnosticsData};
+use super::{DiagnosticsData, config_panel_ui, diagnostics_panel_ui};
 
 /// Resource containing the UI panel state.
 #[derive(Resource)]
@@ -173,10 +173,7 @@ struct CharacterControllerUiPanelConfig {
 /// System that renders the config panel and help text.
 fn character_controller_config_ui_system<M: Component>(
     mut contexts: EguiContexts,
-    mut config_query: Query<
-        (&mut ControllerConfig, &mut CharacterController),
-        With<M>,
-    >,
+    mut config_query: Query<(&mut ControllerConfig, &mut CharacterController), With<M>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut ui_state: ResMut<CharacterControllerUiState>,
     panel_config: Res<CharacterControllerUiPanelConfig>,

@@ -15,11 +15,11 @@
 mod helpers;
 
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 use bevy_rapier2d::prelude::*;
 use helpers::{
-    float_settings_ui, jump_settings_ui, movement_settings_ui, sensor_settings_ui,
-    slope_settings_ui, spring_settings_ui, upright_torque_settings_ui, ControlsPlugin, Player,
+    ControlsPlugin, Player, float_settings_ui, jump_settings_ui, movement_settings_ui,
+    sensor_settings_ui, slope_settings_ui, spring_settings_ui, upright_torque_settings_ui,
 };
 use msg_character_controller::prelude::*;
 

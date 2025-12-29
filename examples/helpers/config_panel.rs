@@ -90,11 +90,7 @@ pub fn spring_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
         let mut max_force = config.spring_max_force.unwrap_or(3000.0);
         ui.horizontal(|ui| {
             if ui.checkbox(&mut has_max_force, "Max Force:").changed() {
-                config.spring_max_force = if has_max_force {
-                    Some(max_force)
-                } else {
-                    None
-                };
+                config.spring_max_force = if has_max_force { Some(max_force) } else { None };
             }
             if has_max_force {
                 if ui
@@ -115,11 +111,7 @@ pub fn spring_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
         let mut max_vel = config.spring_max_velocity.unwrap_or(100.0);
         ui.horizontal(|ui| {
             if ui.checkbox(&mut has_max_vel, "Max Velocity:").changed() {
-                config.spring_max_velocity = if has_max_vel {
-                    Some(max_vel)
-                } else {
-                    None
-                };
+                config.spring_max_velocity = if has_max_vel { Some(max_vel) } else { None };
             }
             if has_max_vel {
                 if ui
@@ -370,11 +362,8 @@ pub fn upright_torque_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConf
         let mut max_vel = config.upright_max_angular_velocity.unwrap_or(10.0);
         ui.horizontal(|ui| {
             if ui.checkbox(&mut has_max_vel, "Max Angular Vel:").changed() {
-                config.upright_max_angular_velocity = if has_max_vel {
-                    Some(max_vel)
-                } else {
-                    None
-                };
+                config.upright_max_angular_velocity =
+                    if has_max_vel { Some(max_vel) } else { None };
             }
             if has_max_vel {
                 if ui

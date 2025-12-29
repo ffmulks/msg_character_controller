@@ -133,7 +133,10 @@ pub fn wall_ceiling_ui(ui: &mut egui::Ui, controller: &CharacterController) {
             if let Some(ref wall) = controller.left_wall {
                 ui.colored_label(
                     egui::Color32::from_rgb(200, 150, 100),
-                    format!("dist={:.2}, normal=({:.2}, {:.2})", wall.distance, wall.normal.x, wall.normal.y),
+                    format!(
+                        "dist={:.2}, normal=({:.2}, {:.2})",
+                        wall.distance, wall.normal.x, wall.normal.y
+                    ),
                 );
             } else {
                 ui.label("None");
@@ -146,7 +149,10 @@ pub fn wall_ceiling_ui(ui: &mut egui::Ui, controller: &CharacterController) {
             if let Some(ref wall) = controller.right_wall {
                 ui.colored_label(
                     egui::Color32::from_rgb(200, 150, 100),
-                    format!("dist={:.2}, normal=({:.2}, {:.2})", wall.distance, wall.normal.x, wall.normal.y),
+                    format!(
+                        "dist={:.2}, normal=({:.2}, {:.2})",
+                        wall.distance, wall.normal.x, wall.normal.y
+                    ),
                 );
             } else {
                 ui.label("None");
@@ -159,7 +165,10 @@ pub fn wall_ceiling_ui(ui: &mut egui::Ui, controller: &CharacterController) {
             if let Some(ref ceiling) = controller.ceiling {
                 ui.colored_label(
                     egui::Color32::from_rgb(200, 150, 100),
-                    format!("dist={:.2}, normal=({:.2}, {:.2})", ceiling.distance, ceiling.normal.x, ceiling.normal.y),
+                    format!(
+                        "dist={:.2}, normal=({:.2}, {:.2})",
+                        ceiling.distance, ceiling.normal.x, ceiling.normal.y
+                    ),
                 );
             } else {
                 ui.label("None");
@@ -332,7 +341,10 @@ pub fn external_forces_ui(
                 };
                 ui.colored_label(
                     color,
-                    format!("({:.1}, {:.1})", ext_impulse.impulse.x, ext_impulse.impulse.y),
+                    format!(
+                        "({:.1}, {:.1})",
+                        ext_impulse.impulse.x, ext_impulse.impulse.y
+                    ),
                 );
             });
             ui.horizontal(|ui| {

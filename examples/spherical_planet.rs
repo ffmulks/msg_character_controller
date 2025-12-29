@@ -18,11 +18,11 @@
 mod helpers;
 
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 use bevy_rapier2d::prelude::*;
 use helpers::{
-    float_settings_ui, jump_settings_ui, movement_settings_ui, sensor_settings_ui,
-    slope_settings_ui, spring_settings_ui, upright_torque_settings_ui, ControlsPlugin, Player,
+    ControlsPlugin, Player, float_settings_ui, jump_settings_ui, movement_settings_ui,
+    sensor_settings_ui, slope_settings_ui, spring_settings_ui, upright_torque_settings_ui,
 };
 use msg_character_controller::prelude::*;
 
@@ -86,8 +86,9 @@ fn main() {
         .add_systems(
             FixedUpdate,
             // Update orientation and gravity before controller systems
-            update_player_orientation_and_gravity
-                .before(msg_character_controller::systems::apply_floating_spring::<Rapier2dBackend>),
+            update_player_orientation_and_gravity.before(
+                msg_character_controller::systems::apply_floating_spring::<Rapier2dBackend>,
+            ),
         )
         .add_systems(Update, camera_follow)
         .add_systems(EguiPrimaryContextPass, settings_ui)
@@ -277,7 +278,11 @@ fn spawn_player(commands: &mut Commands) {
 fn update_player_orientation_and_gravity(
     planet: Res<PlanetConfig>,
     mut query: Query<
-        (&mut Transform, &mut CharacterOrientation, &mut CharacterController),
+        (
+            &mut Transform,
+            &mut CharacterOrientation,
+            &mut CharacterController,
+        ),
         With<Player>,
     >,
 ) {

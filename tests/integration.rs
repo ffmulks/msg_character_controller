@@ -371,7 +371,8 @@ mod wall_detection {
 
         println!(
             "PROOF: touching_left_wall={}, left_wall={:?}",
-            controller.touching_left_wall(), controller.left_wall
+            controller.touching_left_wall(),
+            controller.left_wall
         );
 
         // PROOF: touching_left_wall should be true
@@ -397,7 +398,8 @@ mod wall_detection {
 
         println!(
             "PROOF: touching_right_wall={}, right_wall={:?}",
-            controller.touching_right_wall(), controller.right_wall
+            controller.touching_right_wall(),
+            controller.right_wall
         );
 
         // PROOF: touching_right_wall should be true
@@ -424,7 +426,8 @@ mod wall_detection {
 
         println!(
             "PROOF: touching_left_wall={}, touching_right_wall={}",
-            controller.touching_left_wall(), controller.touching_right_wall()
+            controller.touching_left_wall(),
+            controller.touching_right_wall()
         );
 
         // PROOF: No walls should be detected when far
@@ -463,7 +466,8 @@ mod ceiling_detection {
 
         println!(
             "PROOF: touching_ceiling={}, ceiling={:?}",
-            controller.touching_ceiling(), controller.ceiling
+            controller.touching_ceiling(),
+            controller.ceiling
         );
 
         // PROOF: touching_ceiling should be true
@@ -587,8 +591,7 @@ mod upright_torque {
                 GlobalTransform::from(transform),
                 CharacterController::new(),
                 // Use default upright torque settings (100000 strength, 20000 damping)
-                ControllerConfig::default()
-                    .with_upright_target_angle(0.0),
+                ControllerConfig::default().with_upright_target_angle(0.0),
                 MovementIntent::default(),
                 Rapier2dCharacterBundle::new(), // Not rotation locked
                 Collider::capsule_y(8.0, 4.0),
@@ -693,7 +696,8 @@ mod upright_torque {
         assert!(
             final_rotation.abs() < initial_rotation.abs(),
             "Character should rotate toward target (0). Initial: {}, Final: {}",
-            initial_rotation, final_rotation
+            initial_rotation,
+            final_rotation
         );
     }
 
@@ -717,7 +721,8 @@ mod upright_torque {
         assert!(
             final_rotation.abs() < initial_rotation.abs(),
             "Character should rotate toward target (0). Initial: {}, Final: {}",
-            initial_rotation, final_rotation
+            initial_rotation,
+            final_rotation
         );
     }
 
@@ -828,7 +833,8 @@ mod coyote_time {
 
         println!(
             "PROOF: is_grounded={}, time_since_grounded={}",
-            controller.is_grounded(config), controller.time_since_grounded
+            controller.is_grounded(config),
+            controller.time_since_grounded
         );
 
         // PROOF: time_since_grounded should be zero when grounded
@@ -852,7 +858,8 @@ mod coyote_time {
 
         println!(
             "PROOF: is_grounded={}, time_since_grounded={}",
-            controller.is_grounded(config), controller.time_since_grounded
+            controller.is_grounded(config),
+            controller.time_since_grounded
         );
 
         // PROOF: time_since_grounded should accumulate (30 frames at 60Hz = 0.5s)

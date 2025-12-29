@@ -626,9 +626,7 @@ fn rapier_ceiling_detection(
 ///
 /// This ensures that external user forces are preserved while our forces
 /// are "isolated" between frames.
-pub fn clear_controller_forces(
-    mut q: Query<(&mut ExternalForce, &mut CharacterController)>,
-) {
+pub fn clear_controller_forces(mut q: Query<(&mut ExternalForce, &mut CharacterController)>) {
     for (mut ext_force, mut controller) in &mut q {
         // Get the forces we applied last frame and clear for the new frame
         let (force_to_subtract, torque_to_subtract) = controller.prepare_new_frame();
@@ -647,9 +645,7 @@ pub fn clear_controller_forces(
 /// 2. Stores what we applied for next frame's subtraction
 ///
 /// This ensures our forces are integrated by Rapier's physics step.
-pub fn apply_controller_forces(
-    mut q: Query<(&mut ExternalForce, &mut CharacterController)>,
-) {
+pub fn apply_controller_forces(mut q: Query<(&mut ExternalForce, &mut CharacterController)>) {
     for (mut ext_force, mut controller) in &mut q {
         // Get accumulated forces and prepare for next frame
         let (force_to_apply, torque_to_apply) = controller.finalize_frame();

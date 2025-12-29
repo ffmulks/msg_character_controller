@@ -53,7 +53,9 @@ fn main() {
             ..default()
         }))
         // Physics
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(PX_PER_M))
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(
+            PX_PER_M,
+        ))
         .add_plugins(RapierDebugRenderPlugin::default())
         // Character controller
         .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
@@ -76,7 +78,7 @@ fn setup(mut commands: Commands) {
 
     // Spawn environment
     spawn_box(&mut commands);
-    spawn_platform(&mut commands);
+    spawn_obstacles(&mut commands);
     spawn_slope(&mut commands);
 
     // Spawn player
@@ -108,7 +110,7 @@ fn spawn_box(commands: &mut Commands) {
     // Floor
     spawn_static_collider(
         commands,
-        Vec2::new(0.0, -half_height),
+        Vec2::new(0.0, -half_height - half_wall),
         Vec2::new(half_width, half_wall),
         Color::srgb(0.3, 0.3, 0.3),
     );
@@ -116,7 +118,7 @@ fn spawn_box(commands: &mut Commands) {
     // Ceiling
     spawn_static_collider(
         commands,
-        Vec2::new(0.0, half_height),
+        Vec2::new(0.0, half_height + half_wall),
         Vec2::new(half_width, half_wall),
         Color::srgb(0.3, 0.3, 0.3),
     );
@@ -124,7 +126,7 @@ fn spawn_box(commands: &mut Commands) {
     // Left wall
     spawn_static_collider(
         commands,
-        Vec2::new(-half_width, 0.0),
+        Vec2::new(-half_width + half_wall, 0.0),
         Vec2::new(half_wall, half_height),
         Color::srgb(0.3, 0.3, 0.3),
     );
@@ -132,26 +134,53 @@ fn spawn_box(commands: &mut Commands) {
     // Right wall
     spawn_static_collider(
         commands,
-        Vec2::new(half_width, 0.0),
+        Vec2::new(half_width - half_wall, 0.0),
         Vec2::new(half_wall, half_height),
         Color::srgb(0.3, 0.3, 0.3),
     );
 }
 
-fn spawn_platform(commands: &mut Commands) {
+fn spawn_obstacles(commands: &mut Commands) {
     spawn_static_collider(
         commands,
         Vec2::new(0.0, PLATFORM_Y),
         Vec2::new(PLATFORM_WIDTH / 2.0, PLATFORM_HEIGHT / 2.0),
         Color::srgb(0.4, 0.5, 0.3),
     );
+
+    for i in 0..=5 {
+        spawn_ball_static_collider(
+            commands,
+            Vec2::new(50.0 + 13.0 * i as f32, -BOX_HEIGHT / 2.0 + 10.0 * i as f32),
+            5.0,
+            Color::srgb(0.8, 0.2, 0.2),
+        );
+    };
+
+    for i in 0..=5 {
+        spawn_ball_static_collider(
+            commands,
+            Vec2::new(-BOX_WIDTH / 2.0 + WALL_THICKNESS + 150.0 + 20.0 * i as f32, -BOX_HEIGHT / 2.0 + 5.0),
+            5.0,
+            Color::srgb(0.8, 0.2, 0.2),
+        );
+    };
+
+    for i in 0..=5 {
+        spawn_ball_static_collider(
+            commands,
+            Vec2::new(-BOX_WIDTH / 2.0 + WALL_THICKNESS + 20.0 + 20.0 * i as f32, -BOX_HEIGHT / 2.0),
+            5.0,
+            Color::srgb(0.8, 0.2, 0.2),
+        );
+    };
 }
 
 fn spawn_slope(commands: &mut Commands) {
     // Create a triangle slope using a convex hull collider
     // Position it on the right side of the box
     let slope_x = 250.0;
-    let slope_y = -BOX_HEIGHT / 2.0 + WALL_THICKNESS / 2.0;
+    let slope_y = -BOX_HEIGHT / 2.0;
 
     // Triangle vertices (relative to center)
     let vertices = vec![
@@ -190,6 +219,20 @@ fn spawn_static_collider(commands: &mut Commands, position: Vec2, half_size: Vec
     ));
 }
 
+fn spawn_ball_static_collider(commands: &mut Commands, position: Vec2, radius: f32, color: Color) {
+    commands.spawn((
+        Transform::from_translation(position.extend(0.0)),
+        GlobalTransform::default(),
+        RigidBody::Fixed,
+        Collider::ball(radius),
+        Sprite {
+            color,
+            custom_size: Some(Vec2::new(radius * 2.0, radius * 2.0)),
+            ..default()
+        },
+    ));
+}
+
 fn spawn_player(commands: &mut Commands) {
     let spawn_pos = Vec2::new(-200.0, -BOX_HEIGHT / 2.0 + WALL_THICKNESS + 50.0);
 
@@ -200,7 +243,10 @@ fn spawn_player(commands: &mut Commands) {
             GlobalTransform::default(),
             Sprite {
                 color: Color::srgb(0.2, 0.6, 0.9),
-                custom_size: Some(Vec2::new(PLAYER_RADIUS * 2.0, (PLAYER_RADIUS + PLAYER_HALF_HEIGHT) * 2.0)),
+                custom_size: Some(Vec2::new(
+                    PLAYER_RADIUS * 2.0,
+                    (PLAYER_RADIUS + PLAYER_HALF_HEIGHT) * 2.0,
+                )),
                 ..default()
             },
         ))
@@ -211,7 +257,7 @@ fn spawn_player(commands: &mut Commands) {
                 // Capsule total half-height = half_length + radius = 4 + 6 = 10
                 // We want to float 5 units above ground, so total = 10 + 5 = 15
                 .with_float_height(15.0)
-                .with_ground_cast_width(PLAYER_RADIUS),
+                .with_ground_cast_width(2.0 * PLAYER_RADIUS),
             MovementIntent::default(),
         ))
         .insert((

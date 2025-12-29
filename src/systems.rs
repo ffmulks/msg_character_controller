@@ -18,24 +18,28 @@ use crate::intent::MovementIntent;
 /// - displacement = target_height - current_height (positive = below target)
 /// - velocity = vertical velocity (positive = moving up)
 pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController)> =
-        world
-            .query::<(
-                Entity,
-                &ControllerConfig,
-                Option<&CharacterOrientation>,
-                &CharacterController,
-            )>()
-            .iter(world)
-            .map(|(e, config, orientation, controller)| {
-                (
-                    e,
-                    *config,
-                    orientation.copied().unwrap_or_default(),
-                    controller.clone(),
-                )
-            })
-            .collect();
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        CharacterOrientation,
+        CharacterController,
+    )> = world
+        .query::<(
+            Entity,
+            &ControllerConfig,
+            Option<&CharacterOrientation>,
+            &CharacterController,
+        )>()
+        .iter(world)
+        .map(|(e, config, orientation, controller)| {
+            (
+                e,
+                *config,
+                orientation.copied().unwrap_or_default(),
+                controller.clone(),
+            )
+        })
+        .collect();
 
     for (entity, config, orientation, controller) in entities {
         let Some(ref floor) = controller.floor else {
@@ -262,35 +266,39 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
         .unwrap_or(0.0);
 
     // Collect entities with pending jump requests that can jump
-    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController)> =
-        world
-            .query::<(
-                Entity,
-                &ControllerConfig,
-                Option<&CharacterOrientation>,
-                &CharacterController,
-                &MovementIntent,
-            )>()
-            .iter(world)
-            .filter_map(|(e, config, orientation, controller, intent)| {
-                // Check if there's a valid jump request
-                let jump = intent.jump_request.as_ref()?;
-                let is_within_buffer = jump.is_within_buffer(time, config.jump_buffer_time);
-                let can_jump_now = controller.is_grounded(config)
-                    || controller.time_since_grounded < config.coyote_time;
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        CharacterOrientation,
+        CharacterController,
+    )> = world
+        .query::<(
+            Entity,
+            &ControllerConfig,
+            Option<&CharacterOrientation>,
+            &CharacterController,
+            &MovementIntent,
+        )>()
+        .iter(world)
+        .filter_map(|(e, config, orientation, controller, intent)| {
+            // Check if there's a valid jump request
+            let jump = intent.jump_request.as_ref()?;
+            let is_within_buffer = jump.is_within_buffer(time, config.jump_buffer_time);
+            let can_jump_now = controller.is_grounded(config)
+                || controller.time_since_grounded < config.coyote_time;
 
-                if is_within_buffer && can_jump_now {
-                    Some((
-                        e,
-                        *config,
-                        orientation.copied().unwrap_or_default(),
-                        controller.clone(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
+            if is_within_buffer && can_jump_now {
+                Some((
+                    e,
+                    *config,
+                    orientation.copied().unwrap_or_default(),
+                    controller.clone(),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     for (entity, config, orientation, controller) in entities {
         // Consume the jump request by taking it from MovementIntent
@@ -380,11 +388,14 @@ pub fn apply_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
         let total_torque = spring_torque + damping_torque;
 
         // Clamp total torque to configured max, or use formula-based fallback.
-        let max_torque = config.upright_max_torque.map(|t| t * inertia).unwrap_or_else(|| {
-            // Fallback: maximum based on spring torque at full rotation error (PI).
-            let max_spring_torque = config.upright_torque_strength * consts::PI * inertia;
-            max_spring_torque * 3.0
-        });
+        let max_torque = config
+            .upright_max_torque
+            .map(|t| t * inertia)
+            .unwrap_or_else(|| {
+                // Fallback: maximum based on spring torque at full rotation error (PI).
+                let max_spring_torque = config.upright_torque_strength * consts::PI * inertia;
+                max_spring_torque * 3.0
+            });
         let clamped_torque = total_torque.clamp(-max_torque, max_torque);
 
         B::apply_torque(world, entity, clamped_torque);
