@@ -293,6 +293,8 @@ fn settings_ui(
             Option<&Grounded>,
             Option<&TouchingWall>,
             Option<&TouchingCeiling>,
+            Option<&ExternalForce>,
+            Option<&ExternalImpulse>,
         ),
         With<Player>,
     >,
@@ -379,6 +381,8 @@ fn settings_ui(
         grounded,
         wall,
         ceiling,
+        ext_force,
+        ext_impulse,
     )) = diagnostics_query.single()
     {
         egui::Window::new("Diagnostics")
@@ -398,6 +402,8 @@ fn settings_ui(
                     grounded: grounded.is_some(),
                     touching_wall: wall,
                     touching_ceiling: ceiling,
+                    external_force: ext_force,
+                    external_impulse: ext_impulse,
                 };
                 diagnostics_panel_ui(ui, &data);
             });

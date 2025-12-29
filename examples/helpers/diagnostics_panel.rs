@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::egui;
-use bevy_rapier2d::prelude::Velocity;
+use bevy_rapier2d::prelude::{ExternalForce, ExternalImpulse, Velocity};
 use msg_character_controller::prelude::*;
 
 /// Data needed for the diagnostics panel.
@@ -19,6 +19,8 @@ pub struct DiagnosticsData<'a> {
     pub grounded: bool,
     pub touching_wall: Option<&'a TouchingWall>,
     pub touching_ceiling: Option<&'a TouchingCeiling>,
+    pub external_force: Option<&'a ExternalForce>,
+    pub external_impulse: Option<&'a ExternalImpulse>,
 }
 
 /// Renders the position and velocity section.
@@ -297,6 +299,75 @@ pub fn internal_state_ui(ui: &mut egui::Ui, controller: &CharacterController) {
     });
 }
 
+/// Renders the external forces section.
+pub fn external_forces_ui(
+    ui: &mut egui::Ui,
+    external_force: Option<&ExternalForce>,
+    external_impulse: Option<&ExternalImpulse>,
+) {
+    ui.collapsing("External Forces", |ui| {
+        // External Force
+        ui.label("Force:");
+        if let Some(ext_force) = external_force {
+            ui.horizontal(|ui| {
+                ui.label("  Linear:");
+                let force_mag = ext_force.force.length();
+                let color = if force_mag > 0.01 {
+                    egui::Color32::from_rgb(100, 200, 100)
+                } else {
+                    egui::Color32::from_rgb(150, 150, 150)
+                };
+                ui.colored_label(
+                    color,
+                    format!("({:.1}, {:.1})", ext_force.force.x, ext_force.force.y),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("  Torque:");
+                let color = if ext_force.torque.abs() > 0.01 {
+                    egui::Color32::from_rgb(100, 200, 100)
+                } else {
+                    egui::Color32::from_rgb(150, 150, 150)
+                };
+                ui.colored_label(color, format!("{:.2}", ext_force.torque));
+            });
+        } else {
+            ui.label("  No ExternalForce component");
+        }
+
+        ui.separator();
+
+        // External Impulse
+        ui.label("Impulse:");
+        if let Some(ext_impulse) = external_impulse {
+            ui.horizontal(|ui| {
+                ui.label("  Linear:");
+                let impulse_mag = ext_impulse.impulse.length();
+                let color = if impulse_mag > 0.01 {
+                    egui::Color32::from_rgb(200, 150, 100)
+                } else {
+                    egui::Color32::from_rgb(150, 150, 150)
+                };
+                ui.colored_label(
+                    color,
+                    format!("({:.1}, {:.1})", ext_impulse.impulse.x, ext_impulse.impulse.y),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("  Torque:");
+                let color = if ext_impulse.torque_impulse.abs() > 0.01 {
+                    egui::Color32::from_rgb(200, 150, 100)
+                } else {
+                    egui::Color32::from_rgb(150, 150, 150)
+                };
+                ui.colored_label(color, format!("{:.2}", ext_impulse.torque_impulse));
+            });
+        } else {
+            ui.label("  No ExternalImpulse component");
+        }
+    });
+}
+
 /// Renders the complete diagnostics panel with all sections.
 ///
 /// This is a convenience function that renders all diagnostic sections
@@ -308,5 +379,6 @@ pub fn diagnostics_panel_ui(ui: &mut egui::Ui, data: &DiagnosticsData) {
         wall_ceiling_ui(ui, data.controller, data.touching_wall, data.touching_ceiling);
         movement_intent_ui(ui, data.movement_intent, data.jump_request);
         internal_state_ui(ui, data.controller);
+        external_forces_ui(ui, data.external_force, data.external_impulse);
     });
 }
