@@ -212,7 +212,7 @@ pub fn get_collider_bottom_offset(collider: &Collider) -> f32 {
 }
 
 // Rapier-specific detection systems that use RapierContext as a system parameter
-use crate::config::{CharacterOrientation, ControllerConfig, StairConfig};
+use crate::config::{ControllerConfig, StairConfig};
 
 /// Perform a shapecast using RapierContext.
 fn rapier_shapecast(
@@ -317,13 +317,16 @@ use crate::intent::MovementIntent;
 ///
 /// Floor raycast covers: riding_height + ground_tolerance
 /// (which is float_height + capsule_half_height + ground_tolerance)
+///
+/// **Important**: Raycasts use the "ideal up" direction derived from gravity,
+/// NOT from CharacterOrientation or the actor's Transform rotation. This ensures
+/// ground detection works correctly even when the actor is physically rotated.
 fn rapier_ground_detection(
     rapier_context: ReadRapierContext,
     mut q_controllers: Query<(
         Entity,
         &GlobalTransform,
         &ControllerConfig,
-        Option<&CharacterOrientation>,
         Option<&MovementIntent>,
         &mut CharacterController,
         Option<&CollisionGroups>,
@@ -335,14 +338,12 @@ fn rapier_ground_detection(
         return;
     };
 
-    let default_orientation = CharacterOrientation::default();
     let dt = time.delta_secs();
 
     for (
         entity,
         transform,
         config,
-        orientation_opt,
         movement_intent,
         mut controller,
         collision_groups,
@@ -357,9 +358,10 @@ fn rapier_ground_detection(
         // Update collider_bottom_offset from actual collider dimensions
         controller.collider_bottom_offset = collider.map(get_collider_bottom_offset).unwrap_or(0.0);
 
-        // Get orientation (use default if component not present)
-        let orientation = orientation_opt.unwrap_or(&default_orientation);
-        let down = orientation.down();
+        // Use ideal up/down direction from gravity, NOT from orientation or transform.
+        // This ensures raycasts work correctly regardless of actor rotation.
+        let down = controller.ideal_down();
+        let up = controller.ideal_up();
 
         // Inherit collision groups from parent's collider
         let collision_groups_tuple = collision_groups.map(|cg| (cg.memberships, cg.filters));
@@ -370,8 +372,9 @@ fn rapier_ground_detection(
         let riding_height = controller.riding_height(config);
         let ground_cast_length = riding_height + config.ground_tolerance + 1.0;
 
-        // Compute rotation angle for the shape to align with character orientation
-        let shape_rotation = orientation.angle() - std::f32::consts::FRAC_PI_2;
+        // Compute rotation angle for the shape to align with ideal up direction (from gravity).
+        // This ensures the shapecast shape is oriented correctly in world space.
+        let shape_rotation = controller.ideal_up_angle() - std::f32::consts::FRAC_PI_2;
 
         // Store previous time_since_grounded
         let prev_time_since_grounded = controller.time_since_grounded;
@@ -392,7 +395,6 @@ fn rapier_ground_detection(
             collision_groups_tuple,
         ) {
             let normal = ground_hit.normal;
-            let up = orientation.up();
             let dot = normal.dot(up).clamp(-1.0, 1.0);
             let slope_angle = dot.acos();
 
@@ -411,7 +413,7 @@ fn rapier_ground_detection(
                     radius,
                     config.float_height,
                     intent,
-                    orientation,
+                    &controller,
                     stair,
                     collision_groups_tuple,
                 ) {
@@ -436,6 +438,9 @@ fn rapier_ground_detection(
 /// This function casts a shapecast downward from a position in front of the character
 /// (in the direction of movement intent) to detect steps.
 ///
+/// **Important**: Uses the "ideal up" direction derived from gravity, NOT from
+/// CharacterOrientation or the actor's Transform rotation.
+///
 /// Returns Some(step_height) if a climbable stair is detected, where step_height is
 /// the height above the current ground level that needs to be climbed.
 fn check_stair_step(
@@ -445,13 +450,15 @@ fn check_stair_step(
     collider_radius: f32,
     float_height: f32,
     intent: &MovementIntent,
-    orientation: &CharacterOrientation,
+    controller: &CharacterController,
     config: &StairConfig,
     collision_groups: Option<(Group, Group)>,
 ) -> Option<f32> {
-    let down = orientation.down();
-    let up = orientation.up();
-    let right = orientation.right();
+    // Use ideal directions from gravity, NOT from orientation or transform.
+    // This ensures stair detection works correctly regardless of actor rotation.
+    let down = controller.ideal_down();
+    let up = controller.ideal_up();
+    let right = controller.ideal_right();
 
     // Determine movement direction from intent
     let walk_direction = intent.walk;
@@ -472,7 +479,8 @@ fn check_stair_step(
     let cast_distance = config.max_climb_height + float_height + config.stair_tolerance + 2.0;
 
     // Use shapecast for more reliable detection
-    let shape_rotation = orientation.angle() - std::f32::consts::FRAC_PI_2;
+    // Shape rotation based on ideal up direction from gravity
+    let shape_rotation = controller.ideal_up_angle() - std::f32::consts::FRAC_PI_2;
 
     let stair_hit = rapier_shapecast(
         context,
@@ -552,13 +560,16 @@ fn get_collider_radius(collider: &Collider) -> f32 {
 /// Rapier-specific wall detection system using shapecast.
 ///
 /// Wall cast length: cling_distance + radius
+///
+/// **Important**: Raycasts use the "ideal up" direction derived from gravity,
+/// NOT from CharacterOrientation or the actor's Transform rotation. This ensures
+/// wall detection works correctly even when the actor is physically rotated.
 fn rapier_wall_detection(
     rapier_context: ReadRapierContext,
     mut q_controllers: Query<(
         Entity,
         &GlobalTransform,
         &ControllerConfig,
-        Option<&CharacterOrientation>,
         &mut CharacterController,
         Option<&CollisionGroups>,
         Option<&Collider>,
@@ -568,23 +579,21 @@ fn rapier_wall_detection(
         return;
     };
 
-    let default_orientation = CharacterOrientation::default();
-
-    for (entity, transform, config, orientation_opt, mut controller, collision_groups, collider) in
+    for (entity, transform, config, mut controller, collision_groups, collider) in
         &mut q_controllers
     {
         let position = transform.translation().xy();
 
-        // Get orientation (use default if component not present)
-        let orientation = orientation_opt.unwrap_or(&default_orientation);
-        let left = orientation.left();
-        let right = orientation.right();
+        // Use ideal directions from gravity, NOT from orientation or transform.
+        // This ensures wall detection works correctly regardless of actor rotation.
+        let left = controller.ideal_left();
+        let right = controller.ideal_right();
 
         // Inherit collision groups from parent's collider
         let collision_groups_tuple = collision_groups.map(|cg| (cg.memberships, cg.filters));
 
-        // Compute rotation angle for the shape
-        let shape_rotation = orientation.angle();
+        // Compute rotation angle for the shape based on ideal up direction from gravity
+        let shape_rotation = controller.ideal_up_angle();
 
         // Wall cast length: cling_distance + radius + small buffer for precision
         let radius = collider.map(get_collider_radius).unwrap_or(0.0);
@@ -625,13 +634,16 @@ fn rapier_wall_detection(
 /// Rapier-specific ceiling detection system using shapecast.
 ///
 /// Ceiling cast length: cling_distance + capsule_half_height
+///
+/// **Important**: Raycasts use the "ideal up" direction derived from gravity,
+/// NOT from CharacterOrientation or the actor's Transform rotation. This ensures
+/// ceiling detection works correctly even when the actor is physically rotated.
 fn rapier_ceiling_detection(
     rapier_context: ReadRapierContext,
     mut q_controllers: Query<(
         Entity,
         &GlobalTransform,
         &ControllerConfig,
-        Option<&CharacterOrientation>,
         &mut CharacterController,
         Option<&CollisionGroups>,
     )>,
@@ -640,21 +652,20 @@ fn rapier_ceiling_detection(
         return;
     };
 
-    let default_orientation = CharacterOrientation::default();
-
-    for (entity, transform, config, orientation_opt, mut controller, collision_groups) in
+    for (entity, transform, config, mut controller, collision_groups) in
         &mut q_controllers
     {
         let position = transform.translation().xy();
 
-        // Get orientation
-        let orientation = orientation_opt.unwrap_or(&default_orientation);
-        let up = orientation.up();
+        // Use ideal up direction from gravity, NOT from orientation or transform.
+        // This ensures ceiling detection works correctly regardless of actor rotation.
+        let up = controller.ideal_up();
 
         // Inherit collision groups from parent's collider
         let collision_groups_tuple = collision_groups.map(|cg| (cg.memberships, cg.filters));
 
-        let shape_rotation = orientation.angle() - std::f32::consts::FRAC_PI_2;
+        // Shape rotation based on ideal up direction from gravity
+        let shape_rotation = controller.ideal_up_angle() - std::f32::consts::FRAC_PI_2;
 
         // Ceiling cast length: cling_distance + capsule_half_height + small buffer for precision
         let ceiling_cast_length = config.cling_distance + controller.capsule_half_height() + 1.0;
