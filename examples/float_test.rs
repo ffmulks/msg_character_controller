@@ -221,7 +221,6 @@ fn settings_ui(
             &mut ExternalImpulse,
             &mut ExternalForce,
             &mut MovementIntent,
-            &mut JumpRequest,
         ),
         With<Player>,
     >,
@@ -235,7 +234,6 @@ fn settings_ui(
         mut external_impulse,
         mut external_force,
         mut movement_intent,
-        mut jump_request,
     )) = query.single_mut()
     else {
         return;
@@ -287,9 +285,8 @@ fn settings_ui(
                         let gravity = controller.gravity;
                         *controller = CharacterController::with_gravity(gravity);
 
-                        // Reset movement intent and jump request
+                        // Reset movement intent
                         movement_intent.clear();
-                        jump_request.reset();
                     }
                 });
                 ui.add_space(8.0);
