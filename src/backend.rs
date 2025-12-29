@@ -142,7 +142,7 @@ pub trait CharacterPhysicsBackend: 'static + Send + Sync {
     /// Used to scale forces so that config parameters produce consistent
     /// acceleration regardless of actual body mass.
     fn get_mass(_world: &World, _entity: Entity) -> f32 {
-        // Default implementation returns 1.0 (no scaling)
+        // TODO this should take the backend-provided mass!
         1.0
     }
 

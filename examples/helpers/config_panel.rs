@@ -59,7 +59,7 @@ pub fn float_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             ui.add(
                 egui::DragValue::new(&mut config.cling_strength)
                     .speed(0.01)
-                    .range(0.0..=2.0),
+                    .range(0.0..=10.0),
             );
         });
     });
@@ -73,7 +73,7 @@ pub fn spring_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             ui.add(
                 egui::DragValue::new(&mut config.spring_strength)
                     .speed(100.0)
-                    .range(0.0..=50000.0),
+                    .range(0.0..=1000000000.0),
             );
         });
         ui.horizontal(|ui| {
@@ -81,7 +81,7 @@ pub fn spring_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             ui.add(
                 egui::DragValue::new(&mut config.spring_damping)
                     .speed(10.0)
-                    .range(0.0..=2000.0),
+                    .range(0.0..=1000000000.0),
             );
         });
 
@@ -101,7 +101,7 @@ pub fn spring_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                     .add(
                         egui::DragValue::new(&mut max_force)
                             .speed(100.0)
-                            .range(0.0..=50000.0),
+                            .range(0.0..=1000000000.0),
                     )
                     .changed()
                 {
@@ -126,7 +126,7 @@ pub fn spring_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                     .add(
                         egui::DragValue::new(&mut max_vel)
                             .speed(1.0)
-                            .range(0.0..=1000.0),
+                            .range(0.0..=100000.0),
                     )
                     .changed()
                 {
@@ -145,7 +145,7 @@ pub fn movement_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             ui.add(
                 egui::DragValue::new(&mut config.max_speed)
                     .speed(1.0)
-                    .range(0.0..=1000.0),
+                    .range(0.0..=100000.0),
             );
         });
         ui.horizontal(|ui| {
@@ -153,7 +153,7 @@ pub fn movement_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             ui.add(
                 egui::DragValue::new(&mut config.acceleration)
                     .speed(10.0)
-                    .range(0.0..=5000.0),
+                    .range(0.0..=100000.0),
             );
         });
         ui.horizontal(|ui| {
@@ -197,7 +197,7 @@ pub fn slope_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             ui.add(
                 egui::DragValue::new(&mut config.uphill_gravity_multiplier)
                     .speed(0.1)
-                    .range(0.0..=5.0),
+                    .range(0.0..=10.0),
             );
         });
     });
@@ -265,7 +265,7 @@ pub fn jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             ui.add(
                 egui::DragValue::new(&mut config.jump_speed)
                     .speed(100.0)
-                    .range(0.0..=20000.0),
+                    .range(0.0..=1000000000.0),
             );
         });
         ui.horizontal(|ui| {
@@ -289,7 +289,7 @@ pub fn jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             ui.add(
                 egui::DragValue::new(&mut config.extra_fall_gravity)
                     .speed(0.1)
-                    .range(0.0..=10.0),
+                    .range(0.0..=100.0),
             );
         });
     });
@@ -304,7 +304,7 @@ pub fn upright_torque_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConf
             ui.add(
                 egui::DragValue::new(&mut config.upright_torque_strength)
                     .speed(10.0)
-                    .range(0.0..=1000.0),
+                    .range(0.0..=1000000.0),
             );
         });
         ui.horizontal(|ui| {
@@ -312,7 +312,7 @@ pub fn upright_torque_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConf
             ui.add(
                 egui::DragValue::new(&mut config.upright_torque_damping)
                     .speed(1.0)
-                    .range(0.0..=200.0),
+                    .range(0.0..=1000000.0),
             );
         });
         // upright_target_angle is Option<f32> - handle separately
@@ -342,7 +342,7 @@ pub fn upright_torque_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConf
 
         // upright_max_torque is Option<f32>
         let mut has_max_torque = config.upright_max_torque.is_some();
-        let mut max_torque = config.upright_max_torque.unwrap_or(100.0);
+        let mut max_torque = config.upright_max_torque.unwrap_or(1_000_000.0);
         ui.horizontal(|ui| {
             if ui.checkbox(&mut has_max_torque, "Max Torque:").changed() {
                 config.upright_max_torque = if has_max_torque {
@@ -355,8 +355,8 @@ pub fn upright_torque_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConf
                 if ui
                     .add(
                         egui::DragValue::new(&mut max_torque)
-                            .speed(1.0)
-                            .range(0.0..=1000.0),
+                            .speed(10000.0)
+                            .range(0.0..=100_000_000.0),
                     )
                     .changed()
                 {
@@ -367,7 +367,7 @@ pub fn upright_torque_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConf
 
         // upright_max_angular_velocity is Option<f32>
         let mut has_max_vel = config.upright_max_angular_velocity.is_some();
-        let mut max_vel = config.upright_max_angular_velocity.unwrap_or(3.0);
+        let mut max_vel = config.upright_max_angular_velocity.unwrap_or(10.0);
         ui.horizontal(|ui| {
             if ui.checkbox(&mut has_max_vel, "Max Angular Vel:").changed() {
                 config.upright_max_angular_velocity = if has_max_vel {
@@ -380,8 +380,8 @@ pub fn upright_torque_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConf
                 if ui
                     .add(
                         egui::DragValue::new(&mut max_vel)
-                            .speed(0.1)
-                            .range(0.0..=20.0),
+                            .speed(0.5)
+                            .range(0.0..=50.0),
                     )
                     .changed()
                 {

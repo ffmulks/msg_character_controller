@@ -561,11 +561,11 @@ impl Default for ControllerConfig {
 
             // Upright torque settings
             upright_torque_enabled: true,
-            upright_torque_strength: 200.0,
-            upright_torque_damping: 20.0,
+            upright_torque_strength: 100_000.0,
+            upright_torque_damping: 30_000.0,
             upright_target_angle: None,
             upright_max_torque: None,
-            upright_max_angular_velocity: Some(3.0),
+            upright_max_angular_velocity: Some(10.0),
         }
     }
 }

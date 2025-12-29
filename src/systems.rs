@@ -91,7 +91,7 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
     }
 }
 
-/// Apply gravity as a force.
+/// Apply gravity.
 ///
 /// Gravity is applied from CharacterController.gravity as a force when the
 /// character is not grounded. The gravity is applied as an impulse each
@@ -317,9 +317,11 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
 
 /// Apply upright torque to keep characters oriented correctly.
 ///
-/// Uses a cubic spring-damper system to orient the character to the target rotation.
-/// The torque formula is: `(angle_error³ * spring_strength) - (angular_velocity * damping)`
-/// The cubic term provides stronger correction at large angles.
+/// Uses a simple linear spring-damper system to orient the character to the target rotation.
+/// The torque formula is: `(strength * angle_error) - (damping * angular_velocity)`
+/// Both terms are scaled by inertia for consistent behavior across different body shapes.
+///
+/// For critical damping (no oscillation): `damping = 2 * sqrt(strength)`
 pub fn apply_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
     let entities: Vec<(Entity, ControllerConfig, CharacterOrientation)> = world
         .query::<(
@@ -350,37 +352,38 @@ pub fn apply_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
             angle_error += consts::TAU;
         }
 
-        // Check if already rotating toward target fast enough (velocity clamp).
-        // If rotating in the correct direction at or above max velocity, skip torque application.
-        if let Some(max_vel) = config.upright_max_angular_velocity {
-            // Positive angle_error means we need positive angular velocity to correct
-            let rotating_toward_target = (angle_error > 0.0 && angular_velocity > 0.0)
-                || (angle_error < 0.0 && angular_velocity < 0.0);
-            if rotating_toward_target && angular_velocity.abs() >= max_vel {
-                continue;
-            }
-        }
-
         // Get inertia for scaling torque
         // Scale by actual inertia so torque produces consistent angular acceleration
         let actual_inertia = B::get_principal_inertia(world, entity);
 
-        // Apply cubic spring-damper torque for stronger correction at large angles
-        // Scale by inertia so config values work consistently across different body shapes
-        let spring_torque = config.upright_torque_strength
-            * angle_error
-            * angle_error
-            * angle_error.signum()
-            * actual_inertia;
+        // Apply simple linear spring-damper torque.
+        // This is a standard second-order system: torque = -k*θ - c*ω
+        // where k = spring strength, c = damping coefficient, θ = angle error, ω = angular velocity.
+        // Scale by inertia so config values work consistently across different body shapes.
         let damping_torque = -config.upright_torque_damping * angular_velocity * actual_inertia;
+
+        // Check if already rotating toward target fast enough (velocity clamp).
+        // If at or above max velocity, only apply damping (no spring) to slow down.
+        // This prevents the spring from adding more acceleration when we're already fast enough.
+        let spring_torque = if let Some(max_vel) = config.upright_max_angular_velocity {
+            let rotating_toward_target = (angle_error > 0.0 && angular_velocity > 0.0)
+                || (angle_error < 0.0 && angular_velocity < 0.0);
+            if rotating_toward_target && angular_velocity.abs() >= max_vel {
+                // At max velocity - don't add more spring force, just let damping work
+                0.0
+            } else {
+                config.upright_torque_strength * angle_error * actual_inertia
+            }
+        } else {
+            config.upright_torque_strength * angle_error * actual_inertia
+        };
 
         let total_torque = spring_torque + damping_torque;
 
         // Clamp total torque to configured max, or use formula-based fallback.
         let max_torque = config.upright_max_torque.map(|t| t * actual_inertia).unwrap_or_else(|| {
             // Fallback: maximum based on spring torque at full rotation error (PI).
-            let max_spring_torque =
-                config.upright_torque_strength * consts::PI * consts::PI * actual_inertia;
+            let max_spring_torque = config.upright_torque_strength * consts::PI * actual_inertia;
             max_spring_torque * 3.0
         });
         let clamped_torque = total_torque.clamp(-max_torque, max_torque);

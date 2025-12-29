@@ -588,8 +588,8 @@ mod upright_torque {
                 transform,
                 GlobalTransform::from(transform),
                 CharacterController::new(),
+                // Use default upright torque settings (100000 strength, 20000 damping)
                 ControllerConfig::default()
-                    .with_upright_torque(500.0, 50.0)
                     .with_upright_target_angle(0.0),
                 MovementIntent::default(),
                 Rapier2dCharacterBundle::new(), // Not rotation locked
@@ -600,12 +600,12 @@ mod upright_torque {
     }
 
     #[test]
-    fn upright_torque_corrects_rotation() {
+    fn upright_torque_corrects_positive_rotation() {
         let mut app = create_test_app();
 
         spawn_ground(&mut app, Vec2::new(0.0, 0.0), Vec2::new(100.0, 5.0));
 
-        // Spawn character tilted 30 degrees
+        // Spawn character tilted 30 degrees positive (CCW)
         let initial_rotation = 0.5; // ~30 degrees
         let character = spawn_rotatable_character(&mut app, Vec2::new(0.0, 30.0), initial_rotation);
 
@@ -615,16 +615,36 @@ mod upright_torque {
         let ext_force = app.world().get::<ExternalForce>(character);
         let torque = ext_force.map(|f| f.torque).unwrap_or(0.0);
 
-        println!(
-            "PROOF: initial_rotation={}, applied_torque={}",
-            initial_rotation, torque
-        );
-
         // PROOF: Torque should be applied to correct rotation
-        // Since rotation is positive and target is 0, torque should be negative
+        // Since rotation is positive and target is 0, torque should be negative (CW)
         assert!(
-            torque.abs() > 0.1,
-            "Torque should be applied to correct rotation"
+            torque < -0.1,
+            "Torque should be negative (CW) to correct positive rotation, got: {}",
+            torque
+        );
+    }
+
+    #[test]
+    fn upright_torque_corrects_negative_rotation() {
+        let mut app = create_test_app();
+
+        spawn_ground(&mut app, Vec2::new(0.0, 0.0), Vec2::new(100.0, 5.0));
+
+        // Spawn character tilted 30 degrees negative (CW)
+        let initial_rotation = -0.5; // ~-30 degrees
+        let character = spawn_rotatable_character(&mut app, Vec2::new(0.0, 30.0), initial_rotation);
+
+        tick(&mut app);
+
+        // Check torque is applied
+        let ext_force = app.world().get::<ExternalForce>(character);
+        let torque = ext_force.map(|f| f.torque).unwrap_or(0.0);
+
+        // PROOF: Torque should be positive (CCW) to correct negative rotation
+        assert!(
+            torque > 0.1,
+            "Torque should be positive (CCW) to correct negative rotation, got: {}",
+            torque
         );
     }
 
@@ -647,13 +667,84 @@ mod upright_torque {
         let ext_force = app.world().get::<ExternalForce>(character);
         let torque = ext_force.map(|f| f.torque).unwrap_or(0.0);
 
-        println!("PROOF: rotation=0.0, applied_torque={}", torque);
-
         // PROOF: Torque should be minimal when at target angle
         assert!(
             torque.abs() < 1.0,
             "Torque should be minimal at target angle: {}",
             torque
+        );
+    }
+
+    #[test]
+    fn upright_torque_actually_rotates_character_from_positive() {
+        let mut app = create_test_app();
+
+        spawn_ground(&mut app, Vec2::new(0.0, 0.0), Vec2::new(100.0, 5.0));
+
+        // Spawn character tilted 30 degrees positive (CCW)
+        let initial_rotation = 0.5; // ~30 degrees
+        let character = spawn_rotatable_character(&mut app, Vec2::new(0.0, 30.0), initial_rotation);
+
+        // Run multiple physics frames
+        run_frames(&mut app, 60); // 1 second at 60fps
+
+        let transform = app.world().get::<Transform>(character).unwrap();
+        let (_, _, final_rotation) = transform.rotation.to_euler(EulerRot::XYZ);
+
+        // Character should have rotated toward 0 (negative direction)
+        assert!(
+            final_rotation.abs() < initial_rotation.abs(),
+            "Character should rotate toward target (0). Initial: {}, Final: {}",
+            initial_rotation, final_rotation
+        );
+    }
+
+    #[test]
+    fn upright_torque_actually_rotates_character_from_negative() {
+        let mut app = create_test_app();
+
+        spawn_ground(&mut app, Vec2::new(0.0, 0.0), Vec2::new(100.0, 5.0));
+
+        // Spawn character tilted 30 degrees negative (CW)
+        let initial_rotation = -0.5; // ~-30 degrees
+        let character = spawn_rotatable_character(&mut app, Vec2::new(0.0, 30.0), initial_rotation);
+
+        // Run multiple physics frames
+        run_frames(&mut app, 60); // 1 second at 60fps
+
+        let transform = app.world().get::<Transform>(character).unwrap();
+        let (_, _, final_rotation) = transform.rotation.to_euler(EulerRot::XYZ);
+
+        // Character should have rotated toward 0 (positive direction)
+        assert!(
+            final_rotation.abs() < initial_rotation.abs(),
+            "Character should rotate toward target (0). Initial: {}, Final: {}",
+            initial_rotation, final_rotation
+        );
+    }
+
+    #[test]
+    fn upright_torque_converges_to_target() {
+        let mut app = create_test_app();
+
+        spawn_ground(&mut app, Vec2::new(0.0, 0.0), Vec2::new(100.0, 5.0));
+
+        // Spawn character tilted 30 degrees positive (CCW)
+        let initial_rotation = 0.5;
+        let character = spawn_rotatable_character(&mut app, Vec2::new(0.0, 30.0), initial_rotation);
+
+        // Run for 10 seconds (600 frames at 60fps)
+        run_frames(&mut app, 600);
+
+        let transform = app.world().get::<Transform>(character).unwrap();
+        let (_, _, final_rotation) = transform.rotation.to_euler(EulerRot::XYZ);
+
+        // After 10 seconds, should have converged close to target (0)
+        // With max_torque=50 cap, convergence is gradual but steady
+        assert!(
+            final_rotation.abs() < 0.1,
+            "Character should converge to near target. Final rotation: {}",
+            final_rotation
         );
     }
 }

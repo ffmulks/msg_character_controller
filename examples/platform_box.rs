@@ -20,7 +20,10 @@ use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use bevy_rapier2d::prelude::*;
 use helpers::{CharacterControllerUiPlugin, ControlsPlugin, Player};
-use msg_character_controller::prelude::*;
+use msg_character_controller::prelude::{
+    CharacterController, CharacterControllerPlugin, ControllerConfig, MovementIntent,
+    Rapier2dBackend,
+};
 
 // ==================== Constants ====================
 
@@ -35,6 +38,8 @@ const PLATFORM_WIDTH: f32 = 200.0;
 const PLATFORM_HEIGHT: f32 = 20.0;
 const PLATFORM_Y: f32 = 100.0;
 
+const PX_PER_M: f32 = 10.0; // Pixels per meter for Rapier
+
 // ==================== Main ====================
 
 fn main() {
@@ -48,7 +53,7 @@ fn main() {
             ..default()
         }))
         // Physics
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(PX_PER_M))
         .add_plugins(RapierDebugRenderPlugin::default())
         // Character controller
         .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
@@ -201,14 +206,13 @@ fn spawn_player(commands: &mut Commands) {
         ))
         .insert((
             // Character controller with gravity
-            CharacterController::with_gravity(Vec2::new(0.0, -980.0)),
+            CharacterController::with_gravity(Vec2::new(0.0, -9.81 * PX_PER_M)),
             ControllerConfig::player()
                 // Capsule total half-height = half_length + radius = 4 + 6 = 10
                 // We want to float 5 units above ground, so total = 10 + 5 = 15
                 .with_float_height(15.0)
                 .with_ground_cast_width(PLAYER_RADIUS),
             MovementIntent::default(),
-            JumpRequest::default(),
         ))
         .insert((
             // Physics
