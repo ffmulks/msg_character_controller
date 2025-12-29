@@ -9,8 +9,8 @@
 //! The systems are designed to run in a specific order:
 //!
 //! 1. **Preparation**: Clear forces from previous frame
-//! 2. **Intent Evaluation**: Read MovementIntent and set intent flags
-//! 3. **Sensors**: Collect ground, wall, ceiling data (can run in parallel)
+//! 2. **Sensors**: Collect ground, wall, ceiling data (can run in parallel)
+//! 3. **Intent Evaluation**: Read MovementIntent and set intent flags (requires sensor data)
 //! 4. **Force Accumulation**: Spring, gravity, stair climb, upright torque
 //! 5. **Intent Application**: Apply jump, walk, fly based on intent
 //! 6. **Final Application**: Apply accumulated forces to physics
@@ -26,16 +26,20 @@ use crate::config::{CharacterController, CharacterOrientation, ControllerConfig}
 use crate::intent::MovementIntent;
 
 // ============================================================================
-// PHASE 2: INTENT EVALUATION
+// PHASE 3: INTENT EVALUATION
 // ============================================================================
 
 /// Evaluate MovementIntent and set intent flags on CharacterController.
 ///
-/// This system runs early in the frame to determine:
+/// This system runs AFTER sensors to have access to current frame's floor data.
+/// It determines:
 /// - Whether the character intends to propel upward (jump or fly up)
 ///
 /// These flags are used by downstream systems (like the spring) to make
-/// decisions before the actual forces are applied.
+/// decisions before the actual forces are applied. Running after sensors
+/// ensures that `is_grounded` checks use current frame data, so that
+/// `intends_upward_propulsion` is correctly set when landing and jumping
+/// in the same frame.
 pub fn evaluate_intent<B: CharacterPhysicsBackend>(
     time: Res<Time>,
     mut query: Query<(&mut CharacterController, &ControllerConfig, &MovementIntent)>,
@@ -207,7 +211,7 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
 /// When no step is detected, `active_stair_height` is reset to 0.
 pub fn accumulate_stair_climb_force<B: CharacterPhysicsBackend>(world: &mut World) {
     // Collect entities with stair config
-    let entities: Vec<(Entity, ControllerConfig, CharacterController, StairConfig, CharacterOrientation)> = world
+    let entities: Vec<(Entity, ControllerConfig, CharacterController, CharacterOrientation)> = world
         .query::<(
             Entity,
             &ControllerConfig,
