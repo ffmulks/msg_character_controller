@@ -392,8 +392,19 @@ fn diagnostics_ui(
     }
 
     // Diagnostics window
-    if let Ok((config_ref, controller_ref, transform_ref, velocity_ref, movement, jump)) =
-        diagnostics_query.single()
+    if let Ok((
+        config_ref,
+        controller_ref,
+        transform_ref,
+        velocity_ref,
+        movement,
+        jump,
+        grounded,
+        wall,
+        ceiling,
+        ext_force,
+        ext_impulse,
+    )) = diagnostics_query.single()
     {
         egui::Window::new("Diagnostics")
             .default_pos([320.0, 80.0])
