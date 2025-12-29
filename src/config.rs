@@ -4,6 +4,7 @@
 //! including float height, spring parameters, slope limits, and stair stepping.
 
 use bevy::prelude::*;
+use std::time::Duration;
 
 #[cfg(feature = "rapier2d")]
 use bevy_rapier2d::prelude::{ExternalForce, ExternalImpulse, ReadMassProperties};
@@ -152,16 +153,22 @@ pub struct CharacterController {
     pub step_detected: bool,
     /// Height of the detected step (if any).
     pub step_height: f32,
-    /// Time since last grounded (for coyote time).
-    pub time_since_grounded: f32,
+    /// Timer tracking time since last grounded (for coyote time).
+    /// When grounded, this timer is reset. When not grounded, it ticks.
+    /// Coyote time is valid while the timer has not finished.
+    #[reflect(ignore)]
+    pub coyote_timer: Timer,
 
     // === Stair Climbing State ===
     /// Active stair height when climbing. This is added to the riding height
     /// temporarily to raise the character over the step. Resets to 0 when
     /// no stair is detected.
     pub active_stair_height: f32,
-    /// Time of last upward propulsion (jump or fly up) for spring force filtering.
-    pub last_upward_propulsion_time: f32,
+    /// Timer for filtering spring forces after upward propulsion (jump or fly up).
+    /// When upward propulsion occurs, this timer is reset. Spring force filtering
+    /// is active while the timer has not finished.
+    #[reflect(ignore)]
+    pub jump_spring_filter_timer: Timer,
 
     // === Intent State (set by evaluate_intent, used by force systems) ===
     /// Whether the character intends to propel upward this frame.
@@ -212,10 +219,14 @@ impl Default for CharacterController {
             slope_angle: 0.0,
             step_detected: false,
             step_height: 0.0,
-            time_since_grounded: 0.0,
+            // Coyote timer starts finished (not grounded) - will be reset when grounded
+            // Duration is set by the system based on config.coyote_time
+            coyote_timer: Timer::new(Duration::ZERO, TimerMode::Once),
             // Stair climbing state
             active_stair_height: 0.0,
-            last_upward_propulsion_time: f32::NEG_INFINITY,
+            // Jump spring filter timer starts finished (no recent propulsion)
+            // Duration is set by the system based on config.jump_spring_filter_duration
+            jump_spring_filter_timer: Timer::new(Duration::ZERO, TimerMode::Once),
             // Intent state
             intends_upward_propulsion: false,
             // Gravity
@@ -472,17 +483,38 @@ impl CharacterController {
 
     /// Record an upward propulsion event (jump or fly up).
     /// This enables temporary filtering of downward spring forces.
-    pub fn record_upward_propulsion(&mut self, time: f32) {
-        self.last_upward_propulsion_time = time;
+    pub fn record_upward_propulsion(&mut self, filter_duration: f32) {
+        if filter_duration > 0.0 {
+            self.jump_spring_filter_timer
+                .set_duration(Duration::from_secs_f32(filter_duration));
+            self.jump_spring_filter_timer.reset();
+        }
     }
 
     /// Check if within the jump spring filter window.
     /// Returns true if downward spring forces should be filtered.
-    pub fn in_jump_spring_filter_window(&self, current_time: f32, filter_duration: f32) -> bool {
-        if filter_duration <= 0.0 {
-            return false;
+    pub fn in_jump_spring_filter_window(&self) -> bool {
+        !self.jump_spring_filter_timer.finished()
+    }
+
+    /// Tick the coyote timer (call when not grounded).
+    pub fn tick_coyote_timer(&mut self, delta: Duration) {
+        self.coyote_timer.tick(delta);
+    }
+
+    /// Reset the coyote timer (call when grounded).
+    pub fn reset_coyote_timer(&mut self, coyote_time: f32) {
+        if coyote_time > 0.0 {
+            self.coyote_timer
+                .set_duration(Duration::from_secs_f32(coyote_time));
+            self.coyote_timer.reset();
         }
-        current_time - self.last_upward_propulsion_time < filter_duration
+    }
+
+    /// Check if within coyote time window.
+    /// Returns true if the character can still jump after leaving ground.
+    pub fn in_coyote_time(&self) -> bool {
+        !self.coyote_timer.finished()
     }
 
     // === Force Accumulation Methods ===
