@@ -116,7 +116,6 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
         app.register_type::<config::ControllerConfig>();
         app.register_type::<config::StairConfig>();
         app.register_type::<intent::MovementIntent>();
-        app.register_type::<intent::JumpRequest>();
 
         // Add the physics backend plugin
         app.add_plugins(B::plugin());
@@ -135,8 +134,5 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
                 .chain()
                 .before(bevy_rapier2d::plugin::PhysicsSet::StepSimulation),
         );
-
-        // Reset jump requests at end of fixed update
-        app.add_systems(FixedPostUpdate, systems::reset_jump_requests);
     }
 }

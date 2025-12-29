@@ -215,7 +215,6 @@ fn spawn_player(commands: &mut Commands) {
                 .with_float_height(15.0)
                 .with_ground_cast_width(PLAYER_RADIUS),
             MovementIntent::default(),
-            JumpRequest::default(),
         ))
         .insert((
             // Physics
@@ -278,6 +277,19 @@ fn settings_ui(
             &mut CharacterController,
             &mut Transform,
             &mut Velocity,
+        ),
+        With<Player>,
+    >,
+    diagnostics_query: Query<
+        (
+            &ControllerConfig,
+            &CharacterController,
+            &Transform,
+            &Velocity,
+            Option<&MovementIntent>,
+            Option<&Grounded>,
+            Option<&TouchingWall>,
+            Option<&TouchingCeiling>,
         ),
         With<Player>,
     >,
@@ -392,8 +404,16 @@ fn diagnostics_ui(
     }
 
     // Diagnostics window
-    if let Ok((config_ref, controller_ref, transform_ref, velocity_ref, movement, jump)) =
-        diagnostics_query.single()
+    if let Ok((
+        config_ref,
+        controller_ref,
+        transform_ref,
+        velocity_ref,
+        movement,
+        grounded,
+        wall,
+        ceiling,
+    )) = diagnostics_query.single()
     {
         egui::Window::new("Diagnostics")
             .default_pos([320.0, 80.0])
@@ -408,7 +428,9 @@ fn diagnostics_ui(
                     transform: transform_ref,
                     velocity: velocity_ref,
                     movement_intent: movement,
-                    jump_request: jump,
+                    grounded: grounded.is_some(),
+                    touching_wall: wall,
+                    touching_ceiling: ceiling,
                 };
                 diagnostics_panel_ui(ui, &data);
             });

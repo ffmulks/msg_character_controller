@@ -10,7 +10,7 @@ use bevy::prelude::*;
 
 use crate::backend::CharacterPhysicsBackend;
 use crate::config::{CharacterController, CharacterOrientation, ControllerConfig};
-use crate::intent::{JumpRequest, MovementIntent};
+use crate::intent::MovementIntent;
 
 /// Apply the floating spring force to maintain riding height.
 ///
@@ -230,49 +230,48 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
 /// Apply jump impulse when requested.
 ///
 /// Jumping requires being grounded (or within coyote time).
+/// Jump requests are consumed directly from MovementIntent.
 pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
     let time = world
         .get_resource::<Time>()
         .map(|t| t.elapsed_secs())
         .unwrap_or(0.0);
 
-    let entities: Vec<(
-        Entity,
-        ControllerConfig,
-        CharacterOrientation,
-        CharacterController,
-        bool,
-    )> = world
-        .query::<(
-            Entity,
-            &ControllerConfig,
-            Option<&CharacterOrientation>,
-            &CharacterController,
-            &JumpRequest,
-        )>()
-        .iter(world)
-        .map(|(e, config, orientation, controller, jump)| {
-            let can_jump = jump.is_valid(time, config.jump_buffer_time)
-                && (controller.is_grounded(config)
-                    || controller.time_since_grounded < config.coyote_time);
-            (
-                e,
-                *config,
-                orientation.copied().unwrap_or_default(),
-                controller.clone(),
-                can_jump,
-            )
-        })
-        .collect();
+    // Collect entities with pending jump requests that can jump
+    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController)> =
+        world
+            .query::<(
+                Entity,
+                &ControllerConfig,
+                Option<&CharacterOrientation>,
+                &CharacterController,
+                &MovementIntent,
+            )>()
+            .iter(world)
+            .filter_map(|(e, config, orientation, controller, intent)| {
+                // Check if there's a valid jump request
+                let jump = intent.jump_request.as_ref()?;
+                let is_within_buffer = jump.is_within_buffer(time, config.jump_buffer_time);
+                let can_jump_now = controller.is_grounded(config)
+                    || controller.time_since_grounded < config.coyote_time;
 
-    for (entity, config, orientation, controller, can_jump) in entities {
-        if !can_jump {
-            continue;
-        }
+                if is_within_buffer && can_jump_now {
+                    Some((
+                        e,
+                        *config,
+                        orientation.copied().unwrap_or_default(),
+                        controller.clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-        // Consume the jump request
-        if let Some(mut jump) = world.get_mut::<JumpRequest>(entity) {
-            jump.consume();
+    for (entity, config, orientation, controller) in entities {
+        // Consume the jump request by taking it from MovementIntent
+        if let Some(mut intent) = world.get_mut::<MovementIntent>(entity) {
+            intent.take_jump_request();
         }
 
         // Calculate jump direction
@@ -299,15 +298,6 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
             }
         };
         B::apply_impulse(world, entity, impulse);
-    }
-}
-
-/// Reset jump requests at the end of each frame.
-pub fn reset_jump_requests(mut q: Query<&mut JumpRequest>) {
-    for mut jump in &mut q {
-        if jump.consumed {
-            jump.reset();
-        }
     }
 }
 

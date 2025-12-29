@@ -15,7 +15,9 @@ pub struct DiagnosticsData<'a> {
     pub transform: &'a Transform,
     pub velocity: &'a Velocity,
     pub movement_intent: Option<&'a MovementIntent>,
-    pub jump_request: Option<&'a JumpRequest>,
+    pub grounded: bool,
+    pub touching_wall: Option<&'a TouchingWall>,
+    pub touching_ceiling: Option<&'a TouchingCeiling>,
 }
 
 /// Renders the position and velocity section.
@@ -191,11 +193,7 @@ pub fn wall_ceiling_ui(ui: &mut egui::Ui, controller: &CharacterController) {
 }
 
 /// Renders the movement intent section.
-pub fn movement_intent_ui(
-    ui: &mut egui::Ui,
-    movement: Option<&MovementIntent>,
-    jump: Option<&JumpRequest>,
-) {
+pub fn movement_intent_ui(ui: &mut egui::Ui, movement: Option<&MovementIntent>) {
     ui.collapsing("Movement Intent", |ui| {
         if let Some(intent) = movement {
             ui.horizontal(|ui| {
@@ -228,37 +226,33 @@ pub fn movement_intent_ui(
                 ui.label("Fly Speed:");
                 ui.label(format!("{:.2}", intent.fly_speed));
             });
-        } else {
-            ui.label("No MovementIntent component");
-        }
 
-        ui.separator();
+            ui.separator();
 
-        if let Some(jump) = jump {
             ui.horizontal(|ui| {
                 ui.label("Jump Requested:");
-                let color = if jump.requested && !jump.consumed {
+                let color = if intent.jump_request.is_some() {
                     egui::Color32::from_rgb(100, 200, 100)
                 } else {
                     egui::Color32::from_rgb(150, 150, 150)
                 };
                 ui.colored_label(
                     color,
-                    if jump.requested && !jump.consumed {
+                    if intent.jump_request.is_some() {
                         "ACTIVE"
-                    } else if jump.consumed {
-                        "Consumed"
                     } else {
                         "No"
                     },
                 );
             });
-            ui.horizontal(|ui| {
-                ui.label("Request Time:");
-                ui.label(format!("{:.3}s", jump.request_time));
-            });
+            if let Some(ref jump) = intent.jump_request {
+                ui.horizontal(|ui| {
+                    ui.label("Request Time:");
+                    ui.label(format!("{:.3}s", jump.request_time));
+                });
+            }
         } else {
-            ui.label("No JumpRequest component");
+            ui.label("No MovementIntent component");
         }
     });
 }
@@ -295,9 +289,9 @@ pub fn internal_state_ui(ui: &mut egui::Ui, controller: &CharacterController) {
 pub fn diagnostics_panel_ui(ui: &mut egui::Ui, data: &DiagnosticsData) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         position_velocity_ui(ui, data.transform, data.velocity);
-        ground_detection_ui(ui, data.controller, data.config);
-        wall_ceiling_ui(ui, data.controller);
-        movement_intent_ui(ui, data.movement_intent, data.jump_request);
+        ground_detection_ui(ui, data.controller, data.config, data.grounded);
+        wall_ceiling_ui(ui, data.controller, data.touching_wall, data.touching_ceiling);
+        movement_intent_ui(ui, data.movement_intent);
         internal_state_ui(ui, data.controller);
     });
 }

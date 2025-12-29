@@ -132,7 +132,6 @@ fn setup(mut commands: Commands) {
                 .with_spring(20000.0, 500.0) // VERY strong spring
                 .with_ground_cast_width(PLAYER_RADIUS),
             MovementIntent::default(),
-            JumpRequest::default(),
         ))
         .insert((
             // Physics
