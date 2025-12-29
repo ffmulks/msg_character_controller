@@ -453,6 +453,16 @@ pub fn apply_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
         let damping_torque = -config.upright_torque_damping * angular_velocity * actual_inertia;
 
         let total_torque = spring_torque + damping_torque;
-        B::apply_torque(world, entity, total_torque);
+
+        // Clamp total torque to prevent overflow.
+        // Maximum torque is based on the maximum spring torque at full rotation error (PI).
+        // This prevents the damping term from creating runaway torque when
+        // spinning at high angular velocity.
+        let max_spring_torque =
+            config.upright_torque_strength * consts::PI * consts::PI * actual_inertia;
+        let max_torque = max_spring_torque * 3.0;
+        let clamped_torque = total_torque.clamp(-max_torque, max_torque);
+
+        B::apply_torque(world, entity, clamped_torque);
     }
 }
