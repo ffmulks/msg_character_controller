@@ -30,7 +30,7 @@ use bevy::prelude::*;
 /// assert!(!intent.is_walking());
 /// assert!(!intent.is_flying());
 /// ```
-#[derive(Component, Reflect, Debug, Clone, Copy)]
+#[derive(Component, Reflect, Debug, Clone)]
 #[reflect(Component)]
 pub struct MovementIntent {
     /// Horizontal movement intent (-1.0 = left, 1.0 = right).
@@ -133,12 +133,12 @@ impl MovementIntent {
         self.fly * self.fly_speed
     }
 
-    /// Request a jump at the given time.
+    /// Request a jump with the given buffer duration.
     ///
-    /// Sets the jump request timestamp. The request will be consumed
-    /// by apply_jump later in the same frame if conditions allow.
-    pub fn request_jump(&mut self, current_time: f32) {
-        self.jump_request = Some(JumpRequest::new(current_time));
+    /// Creates a jump request with a timer. The request will be consumed
+    /// by apply_jump if conditions allow before the timer expires.
+    pub fn request_jump(&mut self, buffer_time: f32) {
+        self.jump_request = Some(JumpRequest::new(buffer_time));
     }
 
     /// Take and consume the pending jump request, if any.
@@ -175,26 +175,33 @@ pub type PropulsionIntent = MovementIntent;
 
 /// Jump request stored in MovementIntent.
 ///
-/// This represents a pending jump request with the time it was made
-/// (for jump buffering). The controller consumes the request by
-/// taking the Option from MovementIntent.
-#[derive(Reflect, Debug, Clone, Copy, Default)]
+/// This represents a pending jump request with a timer for buffering.
+/// The timer counts down from the buffer duration, and the request
+/// expires when the timer finishes. The controller consumes the request
+/// by taking the Option from MovementIntent.
+#[derive(Reflect, Debug, Clone, Default)]
 pub struct JumpRequest {
-    /// Time the request was made (for jump buffering).
-    pub request_time: f32,
+    /// Timer for jump buffering. When finished, the request expires.
+    #[reflect(ignore)]
+    pub buffer_timer: Timer,
 }
 
 impl JumpRequest {
-    /// Create a new jump request at the given time.
-    pub fn new(current_time: f32) -> Self {
+    /// Create a new jump request with the given buffer duration.
+    pub fn new(buffer_time: f32) -> Self {
         Self {
-            request_time: current_time,
+            buffer_timer: Timer::from_seconds(buffer_time, TimerMode::Once),
         }
     }
 
-    /// Check if the request is within the buffer time window.
-    pub fn is_within_buffer(&self, current_time: f32, buffer_time: f32) -> bool {
-        (current_time - self.request_time) < buffer_time
+    /// Tick the buffer timer. Call this once per frame.
+    pub fn tick(&mut self, delta: std::time::Duration) {
+        self.buffer_timer.tick(delta);
+    }
+
+    /// Check if the request is still valid (timer hasn't finished).
+    pub fn is_valid(&self) -> bool {
+        !self.buffer_timer.finished()
     }
 }
 
@@ -326,22 +333,39 @@ mod tests {
 
     #[test]
     fn jump_request_new() {
-        let request = JumpRequest::new(1.0);
-        assert_eq!(request.request_time, 1.0);
+        let request = JumpRequest::new(0.1);
+        // New request should be valid (timer not finished)
+        assert!(request.is_valid());
     }
 
     #[test]
-    fn jump_request_is_within_buffer() {
-        let request = JumpRequest::new(1.0);
+    fn jump_request_is_valid_after_tick() {
+        use std::time::Duration;
 
-        // Within buffer time
-        assert!(request.is_within_buffer(1.05, 0.1));
+        let mut request = JumpRequest::new(0.1); // 100ms buffer
 
-        // Outside buffer time
-        assert!(!request.is_within_buffer(1.2, 0.1));
+        // After 50ms, should still be valid
+        request.tick(Duration::from_millis(50));
+        assert!(request.is_valid());
 
-        // Exactly at buffer time boundary
-        assert!(!request.is_within_buffer(1.1, 0.1));
+        // After another 60ms (total 110ms), should be expired
+        request.tick(Duration::from_millis(60));
+        assert!(!request.is_valid());
+    }
+
+    #[test]
+    fn jump_request_expires_at_buffer_time() {
+        use std::time::Duration;
+
+        let mut request = JumpRequest::new(0.1); // 100ms buffer
+
+        // Tick just before buffer time - should still be valid
+        request.tick(Duration::from_millis(99));
+        assert!(request.is_valid());
+
+        // Tick past buffer time - should be expired
+        request.tick(Duration::from_millis(2));
+        assert!(!request.is_valid());
     }
 
     // ==================== MovementIntent Jump Tests ====================
@@ -351,19 +375,19 @@ mod tests {
         let mut intent = MovementIntent::new();
         assert!(!intent.has_jump_request());
 
-        intent.request_jump(1.0);
+        intent.request_jump(0.1);
         assert!(intent.has_jump_request());
-        assert_eq!(intent.jump_request.unwrap().request_time, 1.0);
+        assert!(intent.jump_request.as_ref().unwrap().is_valid());
     }
 
     #[test]
     fn movement_intent_take_jump_request() {
         let mut intent = MovementIntent::new();
-        intent.request_jump(1.0);
+        intent.request_jump(0.1);
 
         let request = intent.take_jump_request();
         assert!(request.is_some());
-        assert_eq!(request.unwrap().request_time, 1.0);
+        assert!(request.unwrap().is_valid());
 
         // Should be consumed now
         assert!(!intent.has_jump_request());
@@ -373,7 +397,7 @@ mod tests {
     #[test]
     fn movement_intent_clear_jump_request() {
         let mut intent = MovementIntent::new();
-        intent.request_jump(1.0);
+        intent.request_jump(0.1);
         assert!(intent.has_jump_request());
 
         intent.clear_jump_request();
@@ -382,10 +406,20 @@ mod tests {
 
     #[test]
     fn movement_intent_request_jump_always_overwrites() {
-        let mut intent = MovementIntent::new();
-        intent.request_jump(1.0);
-        intent.request_jump(2.0);
+        use std::time::Duration;
 
-        assert_eq!(intent.jump_request.unwrap().request_time, 2.0);
+        let mut intent = MovementIntent::new();
+        intent.request_jump(0.1); // 100ms buffer
+
+        // Tick the first request partially
+        if let Some(ref mut jump) = intent.jump_request {
+            jump.tick(Duration::from_millis(50));
+        }
+
+        // Request again with fresh buffer
+        intent.request_jump(0.2); // 200ms buffer
+
+        // New request should be valid and have fresh timer
+        assert!(intent.jump_request.as_ref().unwrap().is_valid());
     }
 }

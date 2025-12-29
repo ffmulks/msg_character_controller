@@ -26,6 +26,38 @@ use crate::config::{CharacterController, ControllerConfig};
 use crate::intent::MovementIntent;
 
 // ============================================================================
+// PHASE 1: PREPARATION (Timer Ticking)
+// ============================================================================
+
+/// Tick jump request timers for all entities.
+///
+/// This system runs early in the frame to advance all jump request timers.
+/// It must run before `expire_jump_requests` which removes expired requests.
+pub fn tick_jump_request_timers(time: Res<Time>, mut query: Query<&mut MovementIntent>) {
+    let delta = time.delta();
+    for mut intent in &mut query {
+        if let Some(ref mut jump) = intent.jump_request {
+            jump.tick(delta);
+        }
+    }
+}
+
+/// Remove expired jump requests.
+///
+/// This system runs after `tick_jump_request_timers` and before `evaluate_intent`.
+/// It removes jump requests whose buffer timer has finished, so that downstream
+/// systems don't need to check buffer validity.
+pub fn expire_jump_requests(mut query: Query<&mut MovementIntent>) {
+    for mut intent in &mut query {
+        if let Some(ref jump) = intent.jump_request {
+            if !jump.is_valid() {
+                intent.jump_request = None;
+            }
+        }
+    }
+}
+
+// ============================================================================
 // PHASE 3: INTENT EVALUATION
 // ============================================================================
 
@@ -40,24 +72,20 @@ use crate::intent::MovementIntent;
 /// ensures that `is_grounded` checks use current frame data, so that
 /// `intends_upward_propulsion` is correctly set when landing and jumping
 /// in the same frame.
+///
+/// Note: Expired jump requests are removed by `expire_jump_requests` before
+/// this system runs, so we just check if a request exists.
 pub fn evaluate_intent<B: CharacterPhysicsBackend>(
-    time: Res<Time>,
     mut query: Query<(&mut CharacterController, &ControllerConfig, &MovementIntent)>,
 ) {
-    let current_time = time.elapsed_secs();
-
     for (mut controller, config, intent) in &mut query {
         // Reset intent state for this frame
         controller.reset_intent_state();
 
         // Check if intending to jump (has valid jump request and can jump)
-        let intends_jump = if let Some(ref jump) = intent.jump_request {
-            let is_within_buffer = jump.is_within_buffer(current_time, config.jump_buffer_time);
-            let can_jump = controller.is_grounded(config) || controller.in_coyote_time();
-            is_within_buffer && can_jump
-        } else {
-            false
-        };
+        // Expired requests are already removed by expire_jump_requests
+        let intends_jump = intent.jump_request.is_some()
+            && (controller.is_grounded(config) || controller.in_coyote_time());
 
         // Check if intending to fly upward
         let intends_fly_up = intent.fly > 0.001;
@@ -293,7 +321,7 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
             &CharacterController,
         )>()
         .iter(world)
-        .map(|(e, config, intent, controller)| (e, *config, *intent, controller.clone()))
+        .map(|(e, config, intent, controller)| (e, *config, intent.clone(), controller.clone()))
         .collect();
 
     let dt = B::get_fixed_timestep(world);
@@ -369,11 +397,6 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
 ///
 /// Flying downwards is disabled while grounded.
 pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
-    let time = world
-        .get_resource::<Time>()
-        .map(|t| t.elapsed_secs())
-        .unwrap_or(0.0);
-
     let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
         .query::<(
             Entity,
@@ -382,7 +405,7 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
             &CharacterController,
         )>()
         .iter(world)
-        .map(|(e, config, intent, controller)| (e, *config, *intent, controller.clone()))
+        .map(|(e, config, intent, controller)| (e, *config, intent.clone(), controller.clone()))
         .collect();
 
     let dt = B::get_fixed_timestep(world);
@@ -443,11 +466,6 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
 /// Flying downwards is disabled while grounded.
 #[deprecated(since = "0.3.0", note = "Use apply_walk and apply_fly separately")]
 pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
-    let time = world
-        .get_resource::<Time>()
-        .map(|t| t.elapsed_secs())
-        .unwrap_or(0.0);
-
     let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
         .query::<(
             Entity,
@@ -456,7 +474,7 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
             &CharacterController,
         )>()
         .iter(world)
-        .map(|(e, config, intent, controller)| (e, *config, *intent, controller.clone()))
+        .map(|(e, config, intent, controller)| (e, *config, intent.clone(), controller.clone()))
         .collect();
 
     // Get fixed timestep delta
@@ -564,13 +582,12 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
 ///
 /// Jumping requires being grounded (or within coyote time).
 /// Jump requests are consumed directly from MovementIntent.
+///
+/// Note: Expired jump requests are removed by `expire_jump_requests` before
+/// this system runs, so we just check if a request exists.
 pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
-    let time = world
-        .get_resource::<Time>()
-        .map(|t| t.elapsed_secs())
-        .unwrap_or(0.0);
-
     // Collect entities with pending jump requests that can jump
+    // Expired requests are already removed by expire_jump_requests
     let entities: Vec<(Entity, ControllerConfig, CharacterController)> = world
         .query::<(
             Entity,
@@ -581,11 +598,12 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
         .iter(world)
         .filter_map(|(e, config, controller, intent)| {
             // Check if there's a valid jump request
-            let jump = intent.jump_request.as_ref()?;
-            let is_within_buffer = jump.is_within_buffer(time, config.jump_buffer_time);
+            if intent.jump_request.is_none() {
+                return None;
+            }
             let can_jump_now = controller.is_grounded(config) || controller.in_coyote_time();
 
-            if is_within_buffer && can_jump_now {
+            if can_jump_now {
                 Some((e, *config, controller.clone()))
             } else {
                 None
