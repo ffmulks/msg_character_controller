@@ -21,8 +21,8 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_rapier2d::prelude::*;
 use helpers::{
-    float_settings_ui, jump_settings_ui, movement_settings_ui, sensor_settings_ui,
-    slope_settings_ui, spring_settings_ui, upright_torque_settings_ui, ControlsPlugin, Player,
+    CharacterControllerUiPlugin, CharacterControllerUiState, ControlsPlugin,
+    DefaultControllerSettings, Player, SpawnConfig,
 };
 use msg_character_controller::prelude::*;
 use std::f32::consts::{PI, TAU};
@@ -65,6 +65,33 @@ impl Default for PlanetConfig {
     }
 }
 
+// ==================== Config Functions ====================
+
+/// Generate the radius at a given angle with hills.
+fn planet_radius_at_angle(angle: f32) -> f32 {
+    // Create multiple overlapping sine waves for interesting terrain
+    let hill1 = (angle * HILL_FREQUENCY as f32).sin() * HILL_AMPLITUDE;
+    let hill2 = (angle * (HILL_FREQUENCY as f32 * 2.3)).sin() * (HILL_AMPLITUDE * 0.4);
+    let hill3 = (angle * (HILL_FREQUENCY as f32 * 0.5)).sin() * (HILL_AMPLITUDE * 0.6);
+
+    PLANET_BASE_RADIUS + hill1 + hill2 + hill3
+}
+
+fn spawn_position() -> Vec2 {
+    // Spawn on top of the planet
+    let spawn_angle = PI / 2.0;
+    let direction = Vec2::new(spawn_angle.cos(), spawn_angle.sin());
+    let surface_radius = planet_radius_at_angle(spawn_angle);
+    PLANET_CENTER + direction * (surface_radius + 40.0)
+}
+
+fn default_config() -> ControllerConfig {
+    ControllerConfig::player()
+        .with_float_height(PLAYER_HALF_HEIGHT)
+        .with_ground_cast_width(PLAYER_RADIUS)
+        .with_upright_torque_enabled(false) // We handle rotation via orientation
+}
+
 // ==================== Main ====================
 
 fn main() {
@@ -88,6 +115,15 @@ fn main() {
         .add_plugins(EguiPlugin::default())
         // Resources
         .init_resource::<PlanetConfig>()
+        // Configure spawn position and default settings for the UI plugin
+        .insert_resource(SpawnConfig::with_dynamic_position(spawn_position))
+        .insert_resource(DefaultControllerSettings::new(
+            default_config(),
+            // Initial gravity will be updated by the orientation system
+            -Vec2::Y * GRAVITY_STRENGTH,
+        ))
+        // Character controller UI panels (unified plugin with settings + diagnostics)
+        .add_plugins(CharacterControllerUiPlugin::<Player>::default())
         // Systems
         .add_systems(Startup, setup)
         .add_systems(
@@ -97,7 +133,8 @@ fn main() {
                 .before(msg_character_controller::systems::apply_floating_spring::<Rapier2dBackend>),
         )
         .add_systems(Update, camera_follow)
-        .add_systems(EguiPrimaryContextPass, settings_ui)
+        // Extra settings UI for planet-specific configuration
+        .add_systems(EguiPrimaryContextPass, planet_gravity_settings_ui)
         .run();
 }
 
@@ -169,16 +206,6 @@ fn setup(mut commands: Commands) {
         },
         Pickable::IGNORE, // Prevent this UI element from blocking mouse clicks
     ));
-}
-
-/// Generate the radius at a given angle with hills.
-fn planet_radius_at_angle(angle: f32) -> f32 {
-    // Create multiple overlapping sine waves for interesting terrain
-    let hill1 = (angle * HILL_FREQUENCY as f32).sin() * HILL_AMPLITUDE;
-    let hill2 = (angle * (HILL_FREQUENCY as f32 * 2.3)).sin() * (HILL_AMPLITUDE * 0.4);
-    let hill3 = (angle * (HILL_FREQUENCY as f32 * 0.5)).sin() * (HILL_AMPLITUDE * 0.6);
-
-    PLANET_BASE_RADIUS + hill1 + hill2 + hill3
 }
 
 fn spawn_hilly_planet(commands: &mut Commands) {
@@ -313,10 +340,7 @@ fn spawn_player(commands: &mut Commands) {
         .insert((
             // Character controller with initial gravity pointing toward planet
             CharacterController::with_gravity(initial_gravity),
-            ControllerConfig::player()
-                .with_float_height(PLAYER_HALF_HEIGHT)
-                .with_ground_cast_width(PLAYER_RADIUS)
-                .with_upright_torque_enabled(false), // We handle rotation via orientation
+            default_config(),
             initial_orientation,
             MovementIntent::default(),
         ))
@@ -345,7 +369,11 @@ fn spawn_player(commands: &mut Commands) {
 fn update_player_orientation_and_gravity(
     planet: Res<PlanetConfig>,
     mut query: Query<
-        (&mut Transform, &mut CharacterOrientation, &mut CharacterController),
+        (
+            &mut Transform,
+            &mut CharacterOrientation,
+            &mut CharacterController,
+        ),
         With<Player>,
     >,
 ) {
@@ -395,43 +423,17 @@ fn camera_follow(
     camera_transform.translation.y = smoothed.y;
 }
 
-// ==================== Settings UI ====================
+// ==================== Planet Gravity Settings UI ====================
 
-fn settings_ui(
+/// Extra settings UI for planet-specific configuration.
+/// This adds a "Planet Gravity" section to the Controller Settings window.
+fn planet_gravity_settings_ui(
     mut contexts: EguiContexts,
-    mut query: Query<
-        (
-            &mut ControllerConfig,
-            &mut CharacterController,
-            &mut Transform,
-            &mut Velocity,
-            &mut ExternalImpulse,
-            &mut ExternalForce,
-            &mut MovementIntent,
-        ),
-        With<Player>,
-    >,
     mut planet_config: ResMut<PlanetConfig>,
-    mut frame_count: Local<u32>,
+    ui_state: Res<CharacterControllerUiState>,
 ) {
-    let Ok((
-        mut config,
-        mut controller,
-        mut transform,
-        mut velocity,
-        mut external_impulse,
-        mut external_force,
-        mut movement_intent,
-    )) = query.single_mut()
-    else {
-        return;
-    };
-
-    // Increment frame counter
-    *frame_count += 1;
-
-    // Skip the first few frames to ensure egui is fully initialized
-    if *frame_count <= 2 {
+    // Skip if panels are hidden or not yet initialized
+    if ui_state.frame_count <= 2 || !ui_state.show_panels {
         return;
     }
 
@@ -439,74 +441,30 @@ fn settings_ui(
         return;
     };
 
+    // Add planet gravity settings to the same "Controller Settings" window
     egui::Window::new("Controller Settings")
-        .default_pos([10.0, 50.0])
+        .default_pos([10.0, 80.0])
         .default_width(300.0)
         .show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                // Reload button at the top
+            // Planet Gravity Settings (custom for this example)
+            ui.collapsing("Planet Gravity", |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("Reset to Defaults").clicked() {
-                        *config = ControllerConfig::player()
-                            .with_float_height(PLAYER_HALF_HEIGHT)
-                            .with_ground_cast_width(PLAYER_RADIUS)
-                            .with_upright_torque_enabled(false);
-                        planet_config.gravity_strength = GRAVITY_STRENGTH;
-                    }
-                    if ui.button("Respawn Player").clicked() {
-                        // Reset position to top of planet
-                        let spawn_angle = PI / 2.0;
-                        let direction = Vec2::new(spawn_angle.cos(), spawn_angle.sin());
-                        let surface_radius = planet_radius_at_angle(spawn_angle);
-                        let spawn_pos = PLANET_CENTER + direction * (surface_radius + 40.0);
-                        transform.translation = spawn_pos.extend(1.0);
-                        transform.rotation = Quat::IDENTITY;
-
-                        // Reset velocity
-                        velocity.linvel = Vec2::ZERO;
-                        velocity.angvel = 0.0;
-
-                        // Reset external impulse and force
-                        external_impulse.impulse = Vec2::ZERO;
-                        external_impulse.torque_impulse = 0.0;
-                        external_force.force = Vec2::ZERO;
-                        external_force.torque = 0.0;
-
-                        // Reset controller state (keep gravity)
-                        let gravity = controller.gravity;
-                        *controller = CharacterController::with_gravity(gravity);
-
-                        // Reset movement intent
-                        movement_intent.clear();
-                    }
+                    ui.label("Gravity Strength:");
+                    ui.add(
+                        egui::DragValue::new(&mut planet_config.gravity_strength)
+                            .speed(1.0)
+                            .range(0.0..=500.0),
+                    );
                 });
-                ui.add_space(8.0);
-
-                // Planet Gravity Settings (custom for this example)
-                ui.collapsing("Planet Gravity", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Gravity Strength:");
-                        ui.add(
-                            egui::DragValue::new(&mut planet_config.gravity_strength)
-                                .speed(1.0)
-                                .range(0.0..=500.0),
-                        );
-                    });
-                    ui.label(format!(
-                        "Current: {:.2} px/s² ({:.2} m/s²)",
-                        planet_config.gravity_strength,
-                        planet_config.gravity_strength / PIXELS_PER_METER
-                    ));
-                });
-
-                // Use helper functions for standard config sections
-                float_settings_ui(ui, &mut config);
-                spring_settings_ui(ui, &mut config);
-                movement_settings_ui(ui, &mut config);
-                slope_settings_ui(ui, &mut config);
-                sensor_settings_ui(ui, &mut config);
-                jump_settings_ui(ui, &mut config);
-                upright_torque_settings_ui(ui, &mut config);
+                ui.label(format!(
+                    "Current: {:.2} px/s² ({:.2} m/s²)",
+                    planet_config.gravity_strength,
+                    planet_config.gravity_strength / PIXELS_PER_METER
+                ));
+                ui.add_space(4.0);
+                if ui.button("Reset Planet Gravity").clicked() {
+                    planet_config.gravity_strength = GRAVITY_STRENGTH;
+                }
             });
         });
 }

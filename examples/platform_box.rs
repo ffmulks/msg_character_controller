@@ -19,11 +19,10 @@ mod helpers;
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use bevy_rapier2d::prelude::*;
-use helpers::{CharacterControllerUiPlugin, ControlsPlugin, Player};
-use msg_character_controller::prelude::{
-    CharacterController, CharacterControllerPlugin, ControllerConfig, MovementIntent,
-    Rapier2dBackend,
+use helpers::{
+    CharacterControllerUiPlugin, ControlsPlugin, DefaultControllerSettings, Player, SpawnConfig,
 };
+use msg_character_controller::prelude::*;
 
 // ==================== Constants ====================
 
@@ -41,6 +40,20 @@ const PLATFORM_Y: f32 = 100.0;
 const PX_PER_M: f32 = 10.0; // Pixels per meter for Rapier
 
 // ==================== Main ====================
+
+fn spawn_position() -> Vec2 {
+    Vec2::new(-200.0, -BOX_HEIGHT / 2.0 + WALL_THICKNESS + 50.0)
+}
+
+fn default_gravity() -> Vec2 {
+    Vec2::new(0.0, -9.81 * PX_PER_M)
+}
+
+fn default_config() -> ControllerConfig {
+    ControllerConfig::player()
+        .with_float_height(15.0)
+        .with_ground_cast_width(PLAYER_RADIUS)
+}
 
 fn main() {
     App::new()
@@ -61,7 +74,13 @@ fn main() {
         .add_plugins(ControlsPlugin::default())
         // Egui for settings UI
         .add_plugins(EguiPlugin::default())
-        // Character controller UI panels
+        // Configure spawn position and default settings for the UI plugin
+        .insert_resource(SpawnConfig::new(spawn_position()))
+        .insert_resource(DefaultControllerSettings::new(
+            default_config(),
+            default_gravity(),
+        ))
+        // Character controller UI panels (unified plugin with settings + diagnostics)
         .add_plugins(CharacterControllerUiPlugin::<Player>::default())
         // Systems
         .add_systems(Startup, setup)
@@ -191,7 +210,7 @@ fn spawn_static_collider(commands: &mut Commands, position: Vec2, half_size: Vec
 }
 
 fn spawn_player(commands: &mut Commands) {
-    let spawn_pos = Vec2::new(-200.0, -BOX_HEIGHT / 2.0 + WALL_THICKNESS + 50.0);
+    let spawn_pos = spawn_position();
 
     commands
         .spawn((
@@ -200,18 +219,17 @@ fn spawn_player(commands: &mut Commands) {
             GlobalTransform::default(),
             Sprite {
                 color: Color::srgb(0.2, 0.6, 0.9),
-                custom_size: Some(Vec2::new(PLAYER_RADIUS * 2.0, (PLAYER_RADIUS + PLAYER_HALF_HEIGHT) * 2.0)),
+                custom_size: Some(Vec2::new(
+                    PLAYER_RADIUS * 2.0,
+                    (PLAYER_RADIUS + PLAYER_HALF_HEIGHT) * 2.0,
+                )),
                 ..default()
             },
         ))
         .insert((
             // Character controller with gravity
-            CharacterController::with_gravity(Vec2::new(0.0, -9.81 * PX_PER_M)),
-            ControllerConfig::player()
-                // Capsule total half-height = half_length + radius = 4 + 6 = 10
-                // We want to float 5 units above ground, so total = 10 + 5 = 15
-                .with_float_height(15.0)
-                .with_ground_cast_width(PLAYER_RADIUS),
+            CharacterController::with_gravity(default_gravity()),
+            default_config(),
             MovementIntent::default(),
         ))
         .insert((
