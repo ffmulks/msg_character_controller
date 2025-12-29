@@ -73,16 +73,26 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
             }
         }
 
-        let spring_force =
-            config.spring_strength * displacement - config.spring_damping * vertical_velocity;
+        // Get mass for force scaling
+        // Scale spring force by mass so config values produce consistent acceleration
+        let mass = B::get_mass(world, entity);
+
+        let spring_force = (config.spring_strength * displacement
+            - config.spring_damping * vertical_velocity)
+            * mass;
 
         // Clamp spring force to configured max, or use formula-based fallback.
         // The fallback prevents overflow when entering the spring zone at high velocity.
         let gravity_magnitude = controller.gravity.length();
-        let max_spring_force = config.spring_max_force.unwrap_or_else(|| {
-            // Fallback: maximum based on counteracting gravity plus reasonable acceleration.
-            gravity_magnitude * 3.0 + config.spring_strength * config.ground_tolerance
-        });
+        let max_spring_force = config
+            .spring_max_force
+            .map(|f| f * mass)
+            .unwrap_or_else(|| {
+                // Fallback: maximum based on counteracting gravity force plus reasonable acceleration.
+                // F = m * g, so max force = m * g * 3 + spring contribution
+                gravity_magnitude * mass * 3.0
+                    + config.spring_strength * config.ground_tolerance * mass
+            });
         let clamped_spring_force = spring_force.clamp(-max_spring_force, max_spring_force);
 
         // Apply force along up direction
@@ -114,8 +124,8 @@ pub fn apply_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
         // Apply gravity as an impulse: I = m * g * dt
         // This produces velocity change: dv = I / m = g * dt
         // Using impulse ensures gravity is integrated correctly with the physics step
-        let actual_mass = B::get_mass(world, entity);
-        let gravity_impulse = controller.gravity * actual_mass * dt;
+        let mass = B::get_mass(world, entity);
+        let gravity_impulse = controller.gravity * mass * dt;
         B::apply_impulse(world, entity, gravity_impulse);
     }
 }
@@ -298,8 +308,8 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
         // Apply jump impulse
         // jump_speed is the desired velocity change. Impulse = mass * delta_v
         // Scale by actual mass so velocity change equals jump_speed regardless of body mass.
-        let actual_mass = B::get_mass(world, entity);
-        let impulse = up * config.jump_speed * actual_mass;
+        let mass = B::get_mass(world, entity);
+        let impulse = up * config.jump_speed * mass;
         B::apply_impulse(world, entity, impulse);
     }
 }
@@ -343,13 +353,13 @@ pub fn apply_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
 
         // Get inertia for scaling torque
         // Scale by actual inertia so torque produces consistent angular acceleration
-        let actual_inertia = B::get_principal_inertia(world, entity);
+        let inertia = B::get_principal_inertia(world, entity);
 
         // Apply simple linear spring-damper torque.
         // This is a standard second-order system: torque = -k*θ - c*ω
         // where k = spring strength, c = damping coefficient, θ = angle error, ω = angular velocity.
         // Scale by inertia so config values work consistently across different body shapes.
-        let damping_torque = -config.upright_torque_damping * angular_velocity * actual_inertia;
+        let damping_torque = -config.upright_torque_damping * angular_velocity * inertia;
 
         // Check if already rotating toward target fast enough (velocity clamp).
         // If at or above max velocity, only apply damping (no spring) to slow down.
@@ -361,18 +371,18 @@ pub fn apply_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
                 // At max velocity - don't add more spring force, just let damping work
                 0.0
             } else {
-                config.upright_torque_strength * angle_error * actual_inertia
+                config.upright_torque_strength * angle_error * inertia
             }
         } else {
-            config.upright_torque_strength * angle_error * actual_inertia
+            config.upright_torque_strength * angle_error * inertia
         };
 
         let total_torque = spring_torque + damping_torque;
 
         // Clamp total torque to configured max, or use formula-based fallback.
-        let max_torque = config.upright_max_torque.map(|t| t * actual_inertia).unwrap_or_else(|| {
+        let max_torque = config.upright_max_torque.map(|t| t * inertia).unwrap_or_else(|| {
             // Fallback: maximum based on spring torque at full rotation error (PI).
-            let max_spring_torque = config.upright_torque_strength * consts::PI * actual_inertia;
+            let max_spring_torque = config.upright_torque_strength * consts::PI * inertia;
             max_spring_torque * 3.0
         });
         let clamped_torque = total_torque.clamp(-max_torque, max_torque);
