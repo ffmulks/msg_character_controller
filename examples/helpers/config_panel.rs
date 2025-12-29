@@ -84,6 +84,56 @@ pub fn spring_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                     .range(0.0..=2000.0),
             );
         });
+
+        // spring_max_force is Option<f32>
+        let mut has_max_force = config.spring_max_force.is_some();
+        let mut max_force = config.spring_max_force.unwrap_or(3000.0);
+        ui.horizontal(|ui| {
+            if ui.checkbox(&mut has_max_force, "Max Force:").changed() {
+                config.spring_max_force = if has_max_force {
+                    Some(max_force)
+                } else {
+                    None
+                };
+            }
+            if has_max_force {
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut max_force)
+                            .speed(100.0)
+                            .range(0.0..=50000.0),
+                    )
+                    .changed()
+                {
+                    config.spring_max_force = Some(max_force);
+                }
+            }
+        });
+
+        // spring_max_velocity is Option<f32>
+        let mut has_max_vel = config.spring_max_velocity.is_some();
+        let mut max_vel = config.spring_max_velocity.unwrap_or(100.0);
+        ui.horizontal(|ui| {
+            if ui.checkbox(&mut has_max_vel, "Max Velocity:").changed() {
+                config.spring_max_velocity = if has_max_vel {
+                    Some(max_vel)
+                } else {
+                    None
+                };
+            }
+            if has_max_vel {
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut max_vel)
+                            .speed(1.0)
+                            .range(0.0..=1000.0),
+                    )
+                    .changed()
+                {
+                    config.spring_max_velocity = Some(max_vel);
+                }
+            }
+        });
     });
 }
 

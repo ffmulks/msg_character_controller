@@ -355,6 +355,15 @@ pub struct ControllerConfig {
     /// Spring damping coefficient.
     pub spring_damping: f32,
 
+    /// Maximum spring force to apply.
+    /// If None, uses the default formula-based clamp.
+    pub spring_max_force: Option<f32>,
+
+    /// Maximum vertical velocity at which spring force is still applied.
+    /// If already moving upward (toward target) at or above this speed, no additional force is applied.
+    /// This prevents overshooting by limiting acceleration when already moving fast enough.
+    pub spring_max_velocity: Option<f32>,
+
     // === Movement Settings ===
     /// Maximum horizontal movement speed (units/second).
     pub max_speed: f32,
@@ -459,6 +468,8 @@ impl Default for ControllerConfig {
             // Spring settings (tuned for mass=1.0)
             spring_strength: 500.0,
             spring_damping: 30.0,
+            spring_max_force: None,
+            spring_max_velocity: None,
 
             // Movement settings
             max_speed: 100.0,
@@ -567,6 +578,20 @@ impl ControllerConfig {
         let ratio = self.spring_damping / self.spring_strength;
         self.spring_strength = strength;
         self.spring_damping = strength * ratio;
+        self
+    }
+
+    /// Builder: set maximum spring force.
+    /// Clamps the total spring force applied for floating.
+    pub fn with_spring_max_force(mut self, max_force: f32) -> Self {
+        self.spring_max_force = Some(max_force);
+        self
+    }
+
+    /// Builder: set maximum velocity for spring force.
+    /// If already moving toward the target at this speed or faster, no force is applied.
+    pub fn with_spring_max_velocity(mut self, max_velocity: f32) -> Self {
+        self.spring_max_velocity = Some(max_velocity);
         self
     }
 

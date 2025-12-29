@@ -61,14 +61,28 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         // x = displacement from target (positive = below target, needs push up)
         // v = vertical velocity (positive = moving up, damp it)
         let displacement = target_height - current_height;
-        let spring_force = config.spring_strength * displacement - config.spring_damping * vertical_velocity;
 
-        // Clamp spring force to prevent overflow.
-        // Maximum force is based on counteracting gravity plus reasonable acceleration.
-        // This prevents the damping term from creating runaway forces when
-        // entering the spring zone at high velocity.
+        // Check if already moving toward target fast enough (velocity clamp).
+        // If moving in the correct direction at or above max velocity, skip force application.
+        if let Some(max_vel) = config.spring_max_velocity {
+            // Positive displacement means we need positive velocity (upward) to correct
+            let moving_toward_target = (displacement > 0.0 && vertical_velocity > 0.0)
+                || (displacement < 0.0 && vertical_velocity < 0.0);
+            if moving_toward_target && vertical_velocity.abs() >= max_vel {
+                continue;
+            }
+        }
+
+        let spring_force =
+            config.spring_strength * displacement - config.spring_damping * vertical_velocity;
+
+        // Clamp spring force to configured max, or use formula-based fallback.
+        // The fallback prevents overflow when entering the spring zone at high velocity.
         let gravity_magnitude = controller.gravity.length();
-        let max_spring_force = gravity_magnitude * 3.0 + config.spring_strength * config.ground_tolerance;
+        let max_spring_force = config.spring_max_force.unwrap_or_else(|| {
+            // Fallback: maximum based on counteracting gravity plus reasonable acceleration.
+            gravity_magnitude * 3.0 + config.spring_strength * config.ground_tolerance
+        });
         let clamped_spring_force = spring_force.clamp(-max_spring_force, max_spring_force);
 
         // Apply force along up direction
