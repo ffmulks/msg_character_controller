@@ -13,8 +13,6 @@ use crate::config::{CharacterController, CharacterOrientation, ControllerConfig}
 use crate::intent::{JumpRequest, MovementIntent};
 use crate::state::{Airborne, Grounded, TouchingCeiling, TouchingWall};
 
-use crate::{GravityMode, GravityModeResource};
-
 /// Apply the floating spring force to maintain riding height.
 ///
 /// Simple spring-damper: F = k * displacement - c * velocity
@@ -80,22 +78,15 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
     }
 }
 
-/// Apply internal gravity when configured.
+/// Apply gravity as a force.
 ///
-/// This system applies gravity from CharacterController.gravity when:
-/// - GravityMode is Internal
-/// - Character is not grounded
-pub fn apply_internal_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
-    // Check gravity mode
-    let gravity_mode = world
-        .get_resource::<GravityModeResource>()
-        .map(|r| r.0)
-        .unwrap_or(GravityMode::Internal);
-
-    if gravity_mode != GravityMode::Internal {
-        return;
-    }
-
+/// Gravity is applied from CharacterController.gravity as a force when the
+/// character is not grounded. The gravity is applied as an impulse each
+/// physics frame to produce the equivalent acceleration.
+///
+/// Note: Gravity is always applied internally by this system. To change the
+/// gravity affecting a character, modify CharacterController::gravity directly.
+pub fn apply_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
     let dt = B::get_fixed_timestep(world);
 
     // Collect entities needing gravity
@@ -107,10 +98,12 @@ pub fn apply_internal_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
         .collect();
 
     for (entity, controller, _config) in entities {
-        // Apply gravity as a velocity change (acceleration)
-        let velocity = B::get_velocity(world, entity);
-        let new_velocity = velocity + controller.gravity * dt;
-        B::set_velocity(world, entity, new_velocity);
+        // Apply gravity as an impulse: I = m * g * dt
+        // This produces velocity change: dv = I / m = g * dt
+        // Using impulse ensures gravity is integrated correctly with the physics step
+        let actual_mass = B::get_mass(world, entity);
+        let gravity_impulse = controller.gravity * actual_mass * dt;
+        B::apply_impulse(world, entity, gravity_impulse);
     }
 }
 

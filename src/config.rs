@@ -494,6 +494,22 @@ impl ControllerConfig {
         self.ground_cast_width * self.wall_cast_multiplier
     }
 
+    /// Get the effective mass for force calculations.
+    ///
+    /// Returns the configured mass if set, otherwise returns the actual
+    /// physics body mass provided by the backend. This centralizes the
+    /// mass logic for consistent force scaling across all systems.
+    ///
+    /// # Arguments
+    /// * `actual_mass` - The actual mass from the physics backend (e.g., Rapier)
+    ///
+    /// # Returns
+    /// The mass to use for force calculations
+    #[inline]
+    pub fn effective_mass(&self, actual_mass: f32) -> f32 {
+        self.mass.unwrap_or(actual_mass)
+    }
+
     /// Create a config optimized for responsive player control.
     pub fn player() -> Self {
         Self {

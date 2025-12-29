@@ -51,7 +51,6 @@ pub mod prelude {
     //! Convenient re-exports for common usage.
 
     pub use crate::CharacterControllerPlugin;
-    pub use crate::GravityMode;
     pub use crate::backend::CharacterPhysicsBackend;
     pub use crate::collision::CollisionData;
     pub use crate::config::{
@@ -64,23 +63,6 @@ pub mod prelude {
     pub use crate::rapier::Rapier2dBackend;
 }
 
-/// Configuration for how gravity is handled by the character controller.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum GravityMode {
-    /// The plugin applies gravity internally using the CharacterController.gravity field.
-    /// Gravity is applied as a force each physics frame when the character is walking
-    /// and not grounded.
-    #[default]
-    Internal,
-    /// Gravity is applied externally by the user.
-    /// The plugin will NOT apply gravity forces, but will still use the
-    /// CharacterController.gravity field for:
-    /// - Extra fall gravity calculation
-    /// - Jump counter force
-    /// - Cling force calculation
-    External,
-}
-
 /// Main plugin for the character controller system.
 ///
 /// This plugin is generic over a physics backend `B` which provides the actual
@@ -89,12 +71,15 @@ pub enum GravityMode {
 /// # Type Parameters
 /// - `B`: The physics backend implementation (e.g., `Rapier2dBackend`)
 ///
-/// # Configuration
-/// - `gravity_mode`: Whether gravity is applied internally or externally
+/// # Gravity Handling
+/// Gravity is always applied internally by this plugin as a force. Set the desired
+/// gravity vector on `CharacterController::gravity`. External application of gravity
+/// is not supported - use `CharacterController::set_gravity()` to change the gravity
+/// vector at runtime.
 ///
 /// # Examples
 ///
-/// With Rapier2D backend (internal gravity):
+/// With Rapier2D backend:
 /// ```rust,no_run
 /// use bevy::prelude::*;
 /// use bevy_rapier2d::prelude::*;
@@ -106,56 +91,22 @@ pub enum GravityMode {
 ///     .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
 ///     .run();
 /// ```
-///
-/// With external gravity:
-/// ```rust,no_run
-/// use bevy::prelude::*;
-/// use bevy_rapier2d::prelude::*;
-/// use msg_character_controller::prelude::*;
-///
-/// App::new()
-///     .add_plugins(DefaultPlugins)
-///     .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
-///     .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::with_external_gravity())
-///     .run();
-/// ```
 pub struct CharacterControllerPlugin<B: backend::CharacterPhysicsBackend> {
     _marker: std::marker::PhantomData<B>,
-    gravity_mode: GravityMode,
 }
 
 impl<B: backend::CharacterPhysicsBackend> Default for CharacterControllerPlugin<B> {
     fn default() -> Self {
         Self {
             _marker: std::marker::PhantomData,
-            gravity_mode: GravityMode::Internal,
         }
     }
 }
 
 impl<B: backend::CharacterPhysicsBackend> CharacterControllerPlugin<B> {
-    /// Create a plugin with internal gravity (default).
-    /// The plugin will apply gravity forces to walking characters.
+    /// Create a new character controller plugin.
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Create a plugin with external gravity.
-    /// The user is responsible for applying gravity; the plugin will use
-    /// CharacterController.gravity for calculations only.
-    pub fn with_external_gravity() -> Self {
-        Self {
-            _marker: std::marker::PhantomData,
-            gravity_mode: GravityMode::External,
-        }
-    }
-
-    /// Create a plugin with the specified gravity mode.
-    pub fn with_gravity_mode(gravity_mode: GravityMode) -> Self {
-        Self {
-            _marker: std::marker::PhantomData,
-            gravity_mode,
-        }
     }
 }
 
@@ -173,31 +124,26 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
         app.register_type::<state::TouchingWall>();
         app.register_type::<state::TouchingCeiling>();
 
-        // Insert gravity mode as a resource
-        app.insert_resource(GravityModeResource(self.gravity_mode));
-
         // Add the physics backend plugin
         app.add_plugins(B::plugin());
 
         // Add core systems in FixedUpdate for consistent physics behavior
+        // These must run before Rapier's StepSimulation to ensure forces are integrated
         app.add_systems(
             FixedUpdate,
             (
                 systems::apply_floating_spring::<B>,
-                systems::apply_internal_gravity::<B>,
+                systems::apply_gravity::<B>,
                 systems::apply_upright_torque::<B>,
                 systems::apply_movement::<B>,
                 systems::apply_jump::<B>,
                 systems::sync_state_markers,
             )
-                .chain(),
+                .chain()
+                .before(bevy_rapier2d::plugin::PhysicsSet::StepSimulation),
         );
 
         // Reset jump requests at end of fixed update
         app.add_systems(FixedPostUpdate, systems::reset_jump_requests);
     }
 }
-
-/// Resource to store the gravity mode configuration.
-#[derive(Resource, Debug, Clone, Copy)]
-pub struct GravityModeResource(pub GravityMode);
