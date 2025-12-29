@@ -35,12 +35,6 @@ const PLATFORM_WIDTH: f32 = 200.0;
 const PLATFORM_HEIGHT: f32 = 20.0;
 const PLATFORM_Y: f32 = 100.0;
 
-// ==================== Components ====================
-
-/// Marker for entities that need gravity applied.
-#[derive(Component)]
-struct AffectedByGravity;
-
 // ==================== Main ====================
 
 fn main() {
@@ -66,7 +60,6 @@ fn main() {
         .add_plugins(CharacterControllerUiPlugin::<Player>::default())
         // Systems
         .add_systems(Startup, setup)
-        .add_systems(Update, apply_gravity)
         .run();
 }
 
@@ -198,7 +191,6 @@ fn spawn_player(commands: &mut Commands) {
     commands
         .spawn((
             Player,
-            AffectedByGravity,
             Transform::from_translation(spawn_pos.extend(1.0)),
             GlobalTransform::default(),
             Sprite {
@@ -216,6 +208,7 @@ fn spawn_player(commands: &mut Commands) {
                 .with_float_height(15.0)
                 .with_ground_cast_width(PLAYER_RADIUS),
             MovementIntent::default(),
+            JumpRequest::default(),
         ))
         .insert((
             // Physics
@@ -224,32 +217,10 @@ fn spawn_player(commands: &mut Commands) {
             ExternalForce::default(),
             ExternalImpulse::default(),
             Collider::capsule_y(PLAYER_HALF_HEIGHT, PLAYER_RADIUS),
-            GravityScale(0.0), // We apply gravity manually
+            GravityScale(0.0), // Gravity is applied internally by the controller
             Damping {
                 linear_damping: 0.0,
                 angular_damping: 0.0,
             },
         ));
 }
-
-// ==================== Gravity System ====================
-
-/// Applies gravity to entities with the AffectedByGravity component.
-/// This is separate from the character controller's floating spring system.
-fn apply_gravity(
-    time: Res<Time<Fixed>>,
-    mut query: Query<
-        (&CharacterController, &ControllerConfig, &mut Velocity),
-        With<AffectedByGravity>,
-    >,
-) {
-    let dt = time.delta_secs();
-
-    for (controller, config, mut velocity) in &mut query {
-        // Only apply gravity when not grounded
-        if !controller.is_grounded(config) {
-            velocity.linvel += controller.gravity * dt;
-        }
-    }
-}
-

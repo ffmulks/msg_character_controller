@@ -42,10 +42,6 @@ const GRAVITY_STRENGTH: f32 = 600.0;
 
 // ==================== Components ====================
 
-/// Marker for entities affected by planetary gravity.
-#[derive(Component)]
-struct AffectedByPlanetaryGravity;
-
 /// Component storing the planet center for gravity calculations.
 #[derive(Resource)]
 struct PlanetConfig {
@@ -89,8 +85,8 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             FixedUpdate,
-            // Run orientation and gravity updates before controller systems
-            (update_player_orientation, apply_planetary_gravity)
+            // Update orientation and gravity before controller systems
+            update_player_orientation_and_gravity
                 .before(msg_character_controller::systems::apply_floating_spring::<Rapier2dBackend>),
         )
         .add_systems(Update, camera_follow)
@@ -232,10 +228,12 @@ fn spawn_player(commands: &mut Commands) {
     // Initial orientation pointing away from planet
     let initial_orientation = CharacterOrientation::new(direction);
 
+    // Initial gravity pointing toward planet center
+    let initial_gravity = -direction * GRAVITY_STRENGTH;
+
     commands
         .spawn((
             Player,
-            AffectedByPlanetaryGravity,
             Transform::from_translation(spawn_pos.extend(1.0)),
             GlobalTransform::default(),
             Sprite {
@@ -245,8 +243,8 @@ fn spawn_player(commands: &mut Commands) {
             },
         ))
         .insert((
-            // Character controller
-            CharacterController::new(),
+            // Character controller with initial gravity pointing toward planet
+            CharacterController::with_gravity(initial_gravity),
             ControllerConfig::player()
                 .with_float_height(PLAYER_HALF_HEIGHT)
                 .with_ground_cast_width(PLAYER_RADIUS)
@@ -261,7 +259,7 @@ fn spawn_player(commands: &mut Commands) {
             ExternalForce::default(),
             ExternalImpulse::default(),
             Collider::capsule_y(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS),
-            GravityScale(0.0), // We apply gravity manually
+            GravityScale(0.0), // Gravity is applied internally by the controller
             Damping {
                 linear_damping: 0.0,
                 angular_damping: 5.0, // Some angular damping for stability
@@ -271,51 +269,33 @@ fn spawn_player(commands: &mut Commands) {
 
 // ==================== Planetary Systems ====================
 
-/// Updates the player's orientation to point away from the planet center.
-fn update_player_orientation(
+/// Updates the player's orientation and gravity to match the planet.
+///
+/// Orientation points away from the planet center (up = radially outward).
+/// Gravity points toward the planet center and is stored in CharacterController.
+/// The internal gravity system then applies it when not grounded.
+fn update_player_orientation_and_gravity(
     planet: Res<PlanetConfig>,
-    mut query: Query<(&mut Transform, &mut CharacterOrientation), With<AffectedByPlanetaryGravity>>,
+    mut query: Query<
+        (&mut Transform, &mut CharacterOrientation, &mut CharacterController),
+        With<Player>,
+    >,
 ) {
-    for (mut transform, mut orientation) in &mut query {
+    for (mut transform, mut orientation, mut controller) in &mut query {
         let position = transform.translation.xy();
         let to_player = position - planet.center;
         let new_up = to_player.normalize_or_zero();
 
         if new_up != Vec2::ZERO {
+            // Update orientation to point away from planet
             orientation.set_up(new_up);
+
+            // Update gravity to point toward planet center
+            controller.gravity = -new_up * planet.gravity_strength;
 
             // Also rotate the transform to visually match orientation
             let angle = new_up.to_angle() - std::f32::consts::FRAC_PI_2;
             transform.rotation = Quat::from_rotation_z(angle);
-        }
-    }
-}
-
-/// Applies radial gravity toward the planet center.
-fn apply_planetary_gravity(
-    planet: Res<PlanetConfig>,
-    time: Res<Time<Fixed>>,
-    mut query: Query<
-        (
-            &Transform,
-            &CharacterController,
-            &ControllerConfig,
-            &mut Velocity,
-        ),
-        With<AffectedByPlanetaryGravity>,
-    >,
-) {
-    let dt = time.delta_secs();
-
-    for (transform, controller, config, mut velocity) in &mut query {
-        // Only apply gravity when not grounded
-        if !controller.is_grounded(config) {
-            let position = transform.translation.xy();
-            let to_center = planet.center - position;
-            let gravity_dir = to_center.normalize_or_zero();
-            let gravity = gravity_dir * planet.gravity_strength;
-
-            velocity.linvel += gravity * dt;
         }
     }
 }

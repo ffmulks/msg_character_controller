@@ -45,20 +45,12 @@ fn main() {
         .add_plugins(ControlsPlugin::default())
         // Egui for settings UI
         .add_plugins(EguiPlugin::default())
-        // Resources
-        .insert_resource(Gravity(Vec2::new(0.0, -980.0)))
         // Systems
         .add_systems(Startup, setup)
-        .add_systems(Update, (apply_gravity, debug_floating))
+        .add_systems(Update, debug_floating)
         .add_systems(EguiPrimaryContextPass, settings_ui)
         .run();
 }
-
-#[derive(Resource)]
-struct Gravity(Vec2);
-
-#[derive(Component)]
-struct AffectedByGravity;
 
 #[derive(Component)]
 struct DebugText;
@@ -121,7 +113,6 @@ fn setup(mut commands: Commands) {
     commands
         .spawn((
             Player,
-            AffectedByGravity,
             Transform::from_translation(spawn_pos.extend(1.0)),
             GlobalTransform::default(),
             Sprite {
@@ -147,30 +138,12 @@ fn setup(mut commands: Commands) {
             ExternalImpulse::default(),
             LockedAxes::ROTATION_LOCKED,
             Collider::capsule_y(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS),
-            GravityScale(0.0), // Manual gravity
+            GravityScale(0.0), // Gravity is applied internally by the controller
             Damping {
                 linear_damping: 0.0,
                 angular_damping: 0.0,
             },
         ));
-}
-
-fn apply_gravity(
-    gravity: Res<Gravity>,
-    time: Res<Time>,
-    mut query: Query<
-        (&CharacterController, &ControllerConfig, &mut Velocity),
-        With<AffectedByGravity>,
-    >,
-) {
-    let dt = time.delta_secs();
-
-    for (controller, config, mut velocity) in &mut query {
-        // Only apply gravity when not grounded
-        if !controller.is_grounded(config) {
-            velocity.linvel += gravity.0 * dt;
-        }
-    }
 }
 
 fn debug_floating(
@@ -251,7 +224,6 @@ fn settings_ui(
         ),
         With<Player>,
     >,
-    mut gravity_res: ResMut<Gravity>,
     mut frame_count: Local<u32>,
 ) {
     let Ok((
@@ -291,8 +263,7 @@ fn settings_ui(
                             .with_float_height(2.0)
                             .with_spring(20000.0, 500.0)
                             .with_ground_cast_width(PLAYER_RADIUS);
-                        gravity_res.0 = Vec2::new(0.0, -980.0);
-                        controller.gravity = gravity_res.0;
+                        controller.gravity = Vec2::new(0.0, -980.0);
                     }
                     if ui.button("Respawn Player").clicked() {
                         // Reset position to spawn point (200 units above platform)
@@ -320,38 +291,24 @@ fn settings_ui(
                 });
                 ui.add_space(8.0);
 
-                // Gravity Settings (custom - syncs with resource)
+                // Gravity Settings (directly on CharacterController)
                 ui.collapsing("Gravity Settings", |ui| {
-                    let mut changed = false;
                     ui.horizontal(|ui| {
                         ui.label("Gravity X:");
-                        if ui
-                            .add(
-                                egui::DragValue::new(&mut gravity_res.0.x)
-                                    .speed(10.0)
-                                    .range(-2000.0..=2000.0),
-                            )
-                            .changed()
-                        {
-                            changed = true;
-                        }
+                        ui.add(
+                            egui::DragValue::new(&mut controller.gravity.x)
+                                .speed(10.0)
+                                .range(-2000.0..=2000.0),
+                        );
                     });
                     ui.horizontal(|ui| {
                         ui.label("Gravity Y:");
-                        if ui
-                            .add(
-                                egui::DragValue::new(&mut gravity_res.0.y)
-                                    .speed(10.0)
-                                    .range(-2000.0..=2000.0),
-                            )
-                            .changed()
-                        {
-                            changed = true;
-                        }
+                        ui.add(
+                            egui::DragValue::new(&mut controller.gravity.y)
+                                .speed(10.0)
+                                .range(-2000.0..=2000.0),
+                        );
                     });
-                    if changed {
-                        controller.gravity = gravity_res.0;
-                    }
                 });
 
                 // Use helper functions for standard config sections
