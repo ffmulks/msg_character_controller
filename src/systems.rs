@@ -115,6 +115,12 @@ pub fn apply_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
         // This produces velocity change: dv = I / m = g * dt
         // Using impulse ensures gravity is integrated correctly with the physics step
         let actual_mass = B::get_mass(world, entity);
+
+        // Skip if mass isn't valid yet (first frame before Rapier computes it)
+        if actual_mass <= 0.0 || !actual_mass.is_finite() {
+            continue;
+        }
+
         let gravity_impulse = controller.gravity * actual_mass * dt;
         B::apply_impulse(world, entity, gravity_impulse);
     }
@@ -303,7 +309,12 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
             Some(_) => {
                 // Scale impulse so velocity change equals jump_speed
                 let actual_mass = B::get_mass(world, entity);
-                up * config.jump_speed * actual_mass
+                // If mass not valid yet, fall back to unscaled impulse
+                if actual_mass <= 0.0 || !actual_mass.is_finite() {
+                    up * config.jump_speed
+                } else {
+                    up * config.jump_speed * actual_mass
+                }
             }
             None => {
                 // No scaling - apply as impulse directly
@@ -364,6 +375,11 @@ pub fn apply_upright_torque<B: CharacterPhysicsBackend>(world: &mut World) {
         // Get inertia for scaling torque
         // Scale by actual inertia so torque produces consistent angular acceleration
         let actual_inertia = B::get_principal_inertia(world, entity);
+
+        // Skip if inertia isn't valid yet (first frame before Rapier computes it)
+        if actual_inertia <= 0.0 || !actual_inertia.is_finite() {
+            continue;
+        }
 
         // Apply cubic spring-damper torque for stronger correction at large angles
         // Scale by inertia so config values work consistently across different body shapes

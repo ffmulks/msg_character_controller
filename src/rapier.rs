@@ -169,7 +169,7 @@ impl CharacterPhysicsBackend for Rapier2dBackend {
             .get::<ReadMassProperties>(entity)
             .map(|props| props.mass)
             .filter(|&m| m > 0.0 && m.is_finite())
-            .unwrap_or(1.0)
+            .unwrap_or(0.0) // Return 0 if not computed yet - callers must handle this
     }
 
     fn get_principal_inertia(world: &World, entity: Entity) -> f32 {
@@ -177,7 +177,7 @@ impl CharacterPhysicsBackend for Rapier2dBackend {
             .get::<ReadMassProperties>(entity)
             .map(|props| props.principal_inertia)
             .filter(|&i| i > 0.0 && i.is_finite())
-            .unwrap_or(1.0)
+            .unwrap_or(0.0) // Return 0 if not computed yet - callers must handle this
     }
 }
 
