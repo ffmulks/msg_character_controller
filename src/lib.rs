@@ -180,6 +180,19 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
                 .chain()
         );
 
+        // Phase 1: Preparation
+        // Tick jump request timers and remove expired requests
+        // These must run before sensors/intent evaluation
+        app.add_systems(
+            FixedUpdate,
+            (
+                systems::tick_jump_request_timers,
+                systems::expire_jump_requests,
+            )
+                .chain()
+                .in_set(CharacterControllerSet::Preparation),
+        );
+
         // Phase 3: Intent Evaluation
         // Evaluate MovementIntent and set intent flags (e.g., intends_upward_propulsion)
         // This runs AFTER sensors so it has access to current frame's floor/grounded state
