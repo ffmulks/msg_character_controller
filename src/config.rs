@@ -841,8 +841,9 @@ pub struct StairConfig {
     /// are not considered stairs (they're handled by the normal spring system).
     pub stair_tolerance: f32,
 
-    /// Extra upward force multiplier when climbing stairs, as a multiple of gravity.
-    /// For example, 2.0 means apply 2x gravity as extra upward force.
+    /// Extra upward force multiplier when climbing stairs, as a multiple of max_spring_force.
+    /// For example, 1.0 means apply the full max spring force as extra upward force.
+    /// Using max_spring_force provides responsive climbing compared to gravity-based force.
     pub climb_force_multiplier: f32,
 
     /// Whether stair stepping is enabled.
@@ -857,7 +858,7 @@ impl Default for StairConfig {
             stair_cast_width: 6.0,
             stair_cast_offset: 2.0,
             stair_tolerance: 1.0,
-            climb_force_multiplier: 2.0,
+            climb_force_multiplier: 1.0,
             enabled: true,
         }
     }
@@ -1034,7 +1035,7 @@ mod tests {
         assert_eq!(config.stair_cast_width, 6.0);
         assert_eq!(config.stair_cast_offset, 2.0);
         assert_eq!(config.stair_tolerance, 1.0);
-        assert_eq!(config.climb_force_multiplier, 2.0);
+        assert_eq!(config.climb_force_multiplier, 1.0);
     }
 
     #[test]

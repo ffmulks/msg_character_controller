@@ -199,7 +199,10 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
 /// When a step is detected that is higher than the float height but within
 /// the max climb height, this system:
 /// 1. Sets `active_stair_height` to the measured step height (used by the spring system)
-/// 2. Applies extra upward force proportional to gravity to help climb the step
+/// 2. Applies extra upward force based on max_spring_force * climb_force_multiplier
+///
+/// Using max_spring_force provides responsive climbing since it represents the
+/// maximum force the spring system can apply.
 ///
 /// When no step is detected, `active_stair_height` is reset to 0.
 pub fn accumulate_stair_climb_force<B: CharacterPhysicsBackend>(world: &mut World) {
@@ -239,11 +242,21 @@ pub fn accumulate_stair_climb_force<B: CharacterPhysicsBackend>(world: &mut Worl
             }
 
             // Apply extra upward force to help climb the step
-            // Force = gravity_magnitude * climb_force_multiplier * mass
+            // Use max_spring_force * multiplier for responsive climbing
             let mass = B::get_mass(world, entity);
             let gravity_magnitude = controller.gravity.length();
             let up = orientation.up();
-            let climb_force = up * gravity_magnitude * stair_config.climb_force_multiplier * mass;
+
+            // Calculate max spring force (same formula as floating spring system)
+            let max_spring_force = config
+                .spring_max_force
+                .map(|f| f * mass)
+                .unwrap_or_else(|| {
+                    gravity_magnitude * mass * 3.0
+                        + config.spring_strength * config.ground_tolerance * mass
+                });
+
+            let climb_force = up * max_spring_force * stair_config.climb_force_multiplier;
 
             B::apply_force(world, entity, climb_force);
         } else {
