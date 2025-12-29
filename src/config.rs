@@ -186,6 +186,12 @@ pub struct CharacterController {
     /// Distance from collider center to bottom (auto-detected from Collider).
     /// For a capsule, this is half_height + radius.
     pub(crate) collider_bottom_offset: f32,
+
+    // === Stair Configuration ===
+    /// Configuration for stair stepping behavior.
+    /// Set to `Some(StairConfig::default())` by default (enabled).
+    /// Set to `None` to disable stair stepping entirely.
+    pub stair_config: Option<StairConfig>,
 }
 
 impl Default for CharacterController {
@@ -213,6 +219,8 @@ impl Default for CharacterController {
             applied_torque: 0.0,
             // Internal
             collider_bottom_offset: 0.0,
+            // Stair configuration (enabled by default)
+            stair_config: Some(StairConfig::default()),
         }
     }
 }
@@ -234,6 +242,39 @@ impl CharacterController {
     /// Set the gravity vector.
     pub fn set_gravity(&mut self, gravity: Vec2) {
         self.gravity = gravity;
+    }
+
+    /// Builder: set stair configuration.
+    pub fn with_stair_config(mut self, config: StairConfig) -> Self {
+        self.stair_config = Some(config);
+        self
+    }
+
+    /// Builder: disable stair stepping.
+    pub fn without_stair_stepping(mut self) -> Self {
+        self.stair_config = None;
+        self
+    }
+
+    /// Set stair configuration at runtime.
+    pub fn set_stair_config(&mut self, config: Option<StairConfig>) {
+        self.stair_config = config;
+    }
+
+    /// Enable or disable stair stepping at runtime.
+    pub fn set_stair_stepping_enabled(&mut self, enabled: bool) {
+        if enabled {
+            if self.stair_config.is_none() {
+                self.stair_config = Some(StairConfig::default());
+            }
+        } else {
+            self.stair_config = None;
+        }
+    }
+
+    /// Check if stair stepping is enabled.
+    pub fn stair_stepping_enabled(&self) -> bool {
+        self.stair_config.as_ref().is_some_and(|c| c.enabled)
     }
 
     /// Check if grounded (floor detected within float_height + ground_tolerance).

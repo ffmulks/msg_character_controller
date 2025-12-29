@@ -323,7 +323,6 @@ fn rapier_ground_detection(
         &GlobalTransform,
         &ControllerConfig,
         Option<&CharacterOrientation>,
-        Option<&StairConfig>,
         Option<&MovementIntent>,
         &mut CharacterController,
         Option<&CollisionGroups>,
@@ -343,7 +342,6 @@ fn rapier_ground_detection(
         transform,
         config,
         orientation_opt,
-        stair_config,
         movement_intent,
         mut controller,
         collision_groups,
@@ -403,7 +401,7 @@ fn rapier_ground_detection(
         }
 
         // Check for stairs if enabled and we have movement intent
-        if let (Some(stair), Some(intent)) = (stair_config, movement_intent) {
+        if let (Some(stair), Some(intent)) = (controller.stair_config.as_ref(), movement_intent) {
             if stair.enabled && intent.is_walking() {
                 if let Some(step_height) = check_stair_step(
                     &context,
