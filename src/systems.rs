@@ -53,8 +53,7 @@ pub fn evaluate_intent<B: CharacterPhysicsBackend>(
         // Check if intending to jump (has valid jump request and can jump)
         let intends_jump = if let Some(ref jump) = intent.jump_request {
             let is_within_buffer = jump.is_within_buffer(current_time, config.jump_buffer_time);
-            let can_jump = controller.is_grounded(config)
-                || controller.time_since_grounded < config.coyote_time;
+            let can_jump = controller.is_grounded(config) || controller.in_coyote_time();
             is_within_buffer && can_jump
         } else {
             false
@@ -87,10 +86,6 @@ pub fn evaluate_intent<B: CharacterPhysicsBackend>(
 ///
 /// Upward spring forces always remain active.
 pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
-    let time = world
-        .get_resource::<Time>()
-        .map(|t| t.elapsed_secs())
-        .unwrap_or(0.0);
 
     let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController)> =
         world
@@ -127,9 +122,9 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
 
         // Check if we should filter downward spring forces:
         // 1. intends_upward_propulsion - intent evaluated this frame (same-frame filtering)
-        // 2. in_jump_spring_filter_window - time-based filter (cross-frame filtering)
+        // 2. in_jump_spring_filter_window - timer-based filter (cross-frame filtering)
         let should_filter_downward = controller.intends_upward_propulsion
-            || controller.in_jump_spring_filter_window(time, config.jump_spring_filter_duration);
+            || controller.in_jump_spring_filter_window();
 
         // Only apply spring within active range, unless filtering
         // During filtering, we still process the spring but filter downward forces
@@ -414,11 +409,6 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
 ///
 /// Flying downwards is disabled while grounded.
 pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
-    let time = world
-        .get_resource::<Time>()
-        .map(|t| t.elapsed_secs())
-        .unwrap_or(0.0);
-
     let entities: Vec<(
         Entity,
         ControllerConfig,
@@ -480,10 +470,10 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
         let fly_impulse = up * change * mass;
         B::apply_impulse(world, entity, fly_impulse);
 
-        // Record upward propulsion time when actively flying up
+        // Record upward propulsion when actively flying up
         if fly_direction > 0.0 && change > 0.0 {
             if let Some(mut controller) = world.get_mut::<CharacterController>(entity) {
-                controller.record_upward_propulsion(time);
+                controller.record_upward_propulsion(config.jump_spring_filter_duration);
             }
         }
     }
@@ -503,11 +493,6 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
 /// Flying downwards is disabled while grounded.
 #[deprecated(since = "0.3.0", note = "Use apply_walk and apply_fly separately")]
 pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
-    let time = world
-        .get_resource::<Time>()
-        .map(|t| t.elapsed_secs())
-        .unwrap_or(0.0);
-
     let entities: Vec<(
         Entity,
         ControllerConfig,
@@ -625,10 +610,10 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
             let fly_impulse = up * change * mass;
             B::apply_impulse(world, entity, fly_impulse);
 
-            // Record upward propulsion time when actively flying up
+            // Record upward propulsion when actively flying up
             if fly_direction > 0.0 && change > 0.0 {
                 if let Some(mut controller) = world.get_mut::<CharacterController>(entity) {
-                    controller.record_upward_propulsion(time);
+                    controller.record_upward_propulsion(config.jump_spring_filter_duration);
                 }
             }
         }
@@ -664,8 +649,7 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
             // Check if there's a valid jump request
             let jump = intent.jump_request.as_ref()?;
             let is_within_buffer = jump.is_within_buffer(time, config.jump_buffer_time);
-            let can_jump_now = controller.is_grounded(config)
-                || controller.time_since_grounded < config.coyote_time;
+            let can_jump_now = controller.is_grounded(config) || controller.in_coyote_time();
 
             if is_within_buffer && can_jump_now {
                 Some((
@@ -700,9 +684,9 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
         let impulse = up * config.jump_speed * mass;
         B::apply_impulse(world, entity, impulse);
 
-        // Record upward propulsion time for spring force filtering
+        // Record upward propulsion for spring force filtering
         if let Some(mut controller) = world.get_mut::<CharacterController>(entity) {
-            controller.record_upward_propulsion(time);
+            controller.record_upward_propulsion(config.jump_spring_filter_duration);
         }
     }
 }
