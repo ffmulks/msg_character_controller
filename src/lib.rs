@@ -177,7 +177,6 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
                 CharacterControllerSet::FinalApplication,
             )
                 .chain()
-                .before(bevy_rapier2d::plugin::PhysicsSet::StepSimulation),
         );
 
         // Phase 2: Intent Evaluation

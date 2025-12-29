@@ -22,7 +22,7 @@ use std::f32::consts;
 use bevy::prelude::*;
 
 use crate::backend::CharacterPhysicsBackend;
-use crate::config::{CharacterController, CharacterOrientation, ControllerConfig, StairConfig};
+use crate::config::{CharacterController, CharacterOrientation, ControllerConfig};
 use crate::intent::MovementIntent;
 
 // ============================================================================
@@ -209,23 +209,24 @@ pub fn accumulate_stair_climb_force<B: CharacterPhysicsBackend>(world: &mut Worl
             Entity,
             &ControllerConfig,
             &CharacterController,
-            &StairConfig,
             Option<&CharacterOrientation>,
         )>()
         .iter(world)
-        .filter(|(_, _, _, stair, _)| stair.enabled)
-        .map(|(e, config, controller, stair, orientation)| {
+        .filter(|(_, _, controller, _)| controller.stair_stepping_enabled())
+        .map(|(e, config, controller, orientation)| {
             (
                 e,
                 *config,
                 controller.clone(),
-                *stair,
                 orientation.copied().unwrap_or_default(),
             )
         })
         .collect();
 
-    for (entity, config, controller, stair_config, orientation) in entities {
+    for (entity, config, controller, orientation) in entities {
+        // Get stair config (we know it exists because of the filter)
+        let stair_config = controller.stair_config.as_ref().unwrap();
+
         // Check if a step is detected that requires climbing
         let should_climb = controller.step_detected
             && controller.step_height > config.float_height + stair_config.stair_tolerance
