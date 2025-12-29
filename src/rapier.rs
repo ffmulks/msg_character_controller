@@ -14,16 +14,10 @@ use crate::config::CharacterController;
 
 /// Rapier2D physics backend for the character controller.
 ///
-/// This backend uses `bevy_rapier2d` for all physics operations including
-/// shapecasting, force application, and velocity manipulation.
-///
-/// # Note on Shapecasting
-///
-/// Due to Rapier2D's system parameter architecture, shapecasting is handled by
-/// dedicated Rapier systems (`rapier_ground_detection`, `rapier_wall_detection`)
-/// rather than through the generic backend trait. The `shapecast` method returns
-/// a miss and should not be used directly - use the component-based detection
-/// results instead.
+/// This backend uses `bevy_rapier2d` for physics operations including
+/// force application and velocity manipulation. Collision detection
+/// (shapecasting/raycasting) is handled by dedicated Rapier systems
+/// that receive `RapierContext` as a system parameter.
 pub struct Rapier2dBackend;
 
 impl CharacterPhysicsBackend for Rapier2dBackend {
@@ -31,37 +25,6 @@ impl CharacterPhysicsBackend for Rapier2dBackend {
 
     fn plugin() -> impl Plugin {
         Rapier2dBackendPlugin
-    }
-
-    fn shapecast(
-        _world: &World,
-        _origin: Vec2,
-        _direction: Vec2,
-        _max_distance: f32,
-        _shape_width: f32,
-        _shape_height: f32,
-        _shape_rotation: f32,
-        _exclude_entity: Entity,
-        _collision_groups: Option<(u32, u32)>,
-    ) -> Option<CollisionData> {
-        // Note: RapierContext cannot be accessed directly from World in this context.
-        // The actual shapecasting is handled by the dedicated Rapier detection systems.
-        // This is a limitation of Rapier's system parameter architecture.
-        None
-    }
-
-    fn raycast(
-        _world: &World,
-        _origin: Vec2,
-        _direction: Vec2,
-        _max_distance: f32,
-        _exclude_entity: Entity,
-        _collision_groups: Option<(u32, u32)>,
-    ) -> Option<CollisionData> {
-        // Note: RapierContext cannot be accessed directly from World in this context.
-        // The actual raycasting is handled by the dedicated Rapier detection systems.
-        // This is a limitation of Rapier's system parameter architecture.
-        None
     }
 
     fn get_velocity(world: &World, entity: Entity) -> Vec2 {
