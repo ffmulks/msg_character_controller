@@ -54,7 +54,6 @@ fn spawn_character_with_config(app: &mut App, position: Vec2, config: Controller
             CharacterController::new(),
             config,
             MovementIntent::default(),
-            JumpRequest::default(),
             Rapier2dCharacterBundle::rotation_locked(),
             Collider::capsule_y(8.0, 4.0),
             GravityScale(0.0), // Disable Rapier gravity - use controller's gravity
@@ -77,7 +76,6 @@ fn spawn_oriented_character(
             ControllerConfig::default(),
             orientation,
             MovementIntent::default(),
-            JumpRequest::default(),
             Rapier2dCharacterBundle::rotation_locked(),
             Collider::capsule_y(8.0, 4.0),
             GravityScale(0.0),
@@ -114,8 +112,8 @@ fn elapsed_time(app: &App) -> f32 {
 /// Request a jump at the current time.
 fn request_jump(app: &mut App, entity: Entity) {
     let time = elapsed_time(app);
-    if let Some(mut jump) = app.world_mut().get_mut::<JumpRequest>(entity) {
-        jump.request(time);
+    if let Some(mut intent) = app.world_mut().get_mut::<MovementIntent>(entity) {
+        intent.request_jump(time);
     }
 }
 
@@ -593,7 +591,6 @@ mod upright_torque {
                     .with_upright_torque(500.0, 50.0)
                     .with_upright_target_angle(0.0),
                 MovementIntent::default(),
-                JumpRequest::default(),
                 Rapier2dCharacterBundle::new(), // Not rotation locked
                 Collider::capsule_y(8.0, 4.0),
                 GravityScale(0.0),
@@ -703,7 +700,6 @@ mod gravity {
                     CharacterController::with_gravity(Vec2::new(0.0, -500.0)), // Custom gravity
                     ControllerConfig::default(),
                     MovementIntent::default(),
-                    JumpRequest::default(),
                     Rapier2dCharacterBundle::rotation_locked(),
                     Collider::capsule_y(8.0, 4.0),
                     GravityScale(0.0),
@@ -806,7 +802,6 @@ mod collision_layers {
                     CharacterController::new(),
                     ControllerConfig::default(),
                     MovementIntent::default(),
-                    JumpRequest::default(),
                     Rapier2dCharacterBundle::rotation_locked(),
                     Collider::capsule_y(8.0, 4.0),
                     CollisionGroups::new(Group::GROUP_1, Group::GROUP_1),
@@ -825,7 +820,6 @@ mod collision_layers {
                     CharacterController::new(),
                     ControllerConfig::default(),
                     MovementIntent::default(),
-                    JumpRequest::default(),
                     Rapier2dCharacterBundle::rotation_locked(),
                     Collider::capsule_y(8.0, 4.0),
                     CollisionGroups::new(Group::GROUP_2, Group::GROUP_2),

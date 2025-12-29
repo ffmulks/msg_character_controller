@@ -41,6 +41,12 @@ pub struct MovementIntent {
     pub walk_speed: f32,
     /// Speed multiplier for flying (0.0 to 1.0).
     pub fly_speed: f32,
+    /// Pending jump request, if any.
+    ///
+    /// Set via `request_jump()`. The controller consumes this by calling
+    /// `take_jump_request()`. New requests are ignored while one is pending
+    /// to preserve coyote time behavior.
+    pub jump_request: Option<JumpRequest>,
 }
 
 impl Default for MovementIntent {
@@ -50,6 +56,7 @@ impl Default for MovementIntent {
             fly: 0.0,
             walk_speed: 1.0,
             fly_speed: 1.0,
+            jump_request: None,
         }
     }
 }
@@ -125,6 +132,31 @@ impl MovementIntent {
     pub fn effective_fly(&self) -> f32 {
         self.fly * self.fly_speed
     }
+
+    /// Request a jump at the given time.
+    ///
+    /// Sets the jump request timestamp. The request will be consumed
+    /// by apply_jump later in the same frame if conditions allow.
+    pub fn request_jump(&mut self, current_time: f32) {
+        self.jump_request = Some(JumpRequest::new(current_time));
+    }
+
+    /// Take and consume the pending jump request, if any.
+    ///
+    /// Returns the jump request if one was pending, removing it from this intent.
+    pub fn take_jump_request(&mut self) -> Option<JumpRequest> {
+        self.jump_request.take()
+    }
+
+    /// Check if there's a pending jump request.
+    pub fn has_jump_request(&self) -> bool {
+        self.jump_request.is_some()
+    }
+
+    /// Clear the pending jump request without consuming it.
+    pub fn clear_jump_request(&mut self) {
+        self.jump_request = None;
+    }
 }
 
 // === Legacy type aliases for backwards compatibility ===
@@ -141,46 +173,28 @@ pub type WalkIntent = MovementIntent;
 #[deprecated(since = "0.2.0", note = "Use MovementIntent instead")]
 pub type PropulsionIntent = MovementIntent;
 
-/// Jump request component.
+/// Jump request stored in MovementIntent.
 ///
-/// Add this component to request a jump. The controller will consume
-/// this request and attempt to execute a jump if conditions allow
-/// (grounded, within coyote time, etc.).
-#[derive(Component, Reflect, Debug, Clone, Copy, Default)]
-#[reflect(Component)]
+/// This represents a pending jump request with the time it was made
+/// (for jump buffering). The controller consumes the request by
+/// taking the Option from MovementIntent.
+#[derive(Reflect, Debug, Clone, Copy, Default)]
 pub struct JumpRequest {
-    /// Whether a jump is currently requested.
-    pub requested: bool,
     /// Time the request was made (for jump buffering).
     pub request_time: f32,
-    /// Whether this request has been consumed.
-    pub consumed: bool,
 }
 
 impl JumpRequest {
-    /// Request a jump.
-    pub fn request(&mut self, current_time: f32) {
-        if !self.requested {
-            self.requested = true;
-            self.request_time = current_time;
-            self.consumed = false;
+    /// Create a new jump request at the given time.
+    pub fn new(current_time: f32) -> Self {
+        Self {
+            request_time: current_time,
         }
     }
 
-    /// Check if the request is valid (not consumed and within buffer time).
-    pub fn is_valid(&self, current_time: f32, buffer_time: f32) -> bool {
-        self.requested && !self.consumed && (current_time - self.request_time) < buffer_time
-    }
-
-    /// Consume the jump request.
-    pub fn consume(&mut self) {
-        self.consumed = true;
-    }
-
-    /// Reset the request.
-    pub fn reset(&mut self) {
-        self.requested = false;
-        self.consumed = false;
+    /// Check if the request is within the buffer time window.
+    pub fn is_within_buffer(&self, current_time: f32, buffer_time: f32) -> bool {
+        (current_time - self.request_time) < buffer_time
     }
 }
 
@@ -197,6 +211,7 @@ mod tests {
         assert_eq!(intent.fly, 0.0);
         assert_eq!(intent.walk_speed, 1.0);
         assert_eq!(intent.fly_speed, 1.0);
+        assert!(intent.jump_request.is_none());
     }
 
     #[test]
@@ -310,70 +325,67 @@ mod tests {
     // ==================== JumpRequest Tests ====================
 
     #[test]
-    fn jump_request_default() {
-        let request = JumpRequest::default();
-        assert!(!request.requested);
-        assert!(!request.consumed);
-    }
-
-    #[test]
-    fn jump_request_request() {
-        let mut request = JumpRequest::default();
-        request.request(1.0);
-
-        assert!(request.requested);
-        assert!(!request.consumed);
+    fn jump_request_new() {
+        let request = JumpRequest::new(1.0);
         assert_eq!(request.request_time, 1.0);
     }
 
     #[test]
-    fn jump_request_only_requests_once() {
-        let mut request = JumpRequest::default();
-        request.request(1.0);
-        request.request(2.0); // Should not update time
-
-        assert_eq!(request.request_time, 1.0);
-    }
-
-    #[test]
-    fn jump_request_is_valid() {
-        let mut request = JumpRequest::default();
-        request.request(1.0);
+    fn jump_request_is_within_buffer() {
+        let request = JumpRequest::new(1.0);
 
         // Within buffer time
-        assert!(request.is_valid(1.05, 0.1));
+        assert!(request.is_within_buffer(1.05, 0.1));
 
         // Outside buffer time
-        assert!(!request.is_valid(1.2, 0.1));
-    }
-
-    #[test]
-    fn jump_request_consume() {
-        let mut request = JumpRequest::default();
-        request.request(1.0);
-        assert!(request.is_valid(1.0, 0.1));
-
-        request.consume();
-        assert!(!request.is_valid(1.0, 0.1));
-    }
-
-    #[test]
-    fn jump_request_reset() {
-        let mut request = JumpRequest::default();
-        request.request(1.0);
-        request.consume();
-
-        request.reset();
-        assert!(!request.requested);
-        assert!(!request.consumed);
-    }
-
-    #[test]
-    fn jump_request_buffer_edge_case() {
-        let mut request = JumpRequest::default();
-        request.request(1.0);
+        assert!(!request.is_within_buffer(1.2, 0.1));
 
         // Exactly at buffer time boundary
-        assert!(!request.is_valid(1.1, 0.1));
+        assert!(!request.is_within_buffer(1.1, 0.1));
+    }
+
+    // ==================== MovementIntent Jump Tests ====================
+
+    #[test]
+    fn movement_intent_request_jump() {
+        let mut intent = MovementIntent::new();
+        assert!(!intent.has_jump_request());
+
+        intent.request_jump(1.0);
+        assert!(intent.has_jump_request());
+        assert_eq!(intent.jump_request.unwrap().request_time, 1.0);
+    }
+
+    #[test]
+    fn movement_intent_take_jump_request() {
+        let mut intent = MovementIntent::new();
+        intent.request_jump(1.0);
+
+        let request = intent.take_jump_request();
+        assert!(request.is_some());
+        assert_eq!(request.unwrap().request_time, 1.0);
+
+        // Should be consumed now
+        assert!(!intent.has_jump_request());
+        assert!(intent.take_jump_request().is_none());
+    }
+
+    #[test]
+    fn movement_intent_clear_jump_request() {
+        let mut intent = MovementIntent::new();
+        intent.request_jump(1.0);
+        assert!(intent.has_jump_request());
+
+        intent.clear_jump_request();
+        assert!(!intent.has_jump_request());
+    }
+
+    #[test]
+    fn movement_intent_request_jump_always_overwrites() {
+        let mut intent = MovementIntent::new();
+        intent.request_jump(1.0);
+        intent.request_jump(2.0);
+
+        assert_eq!(intent.jump_request.unwrap().request_time, 2.0);
     }
 }

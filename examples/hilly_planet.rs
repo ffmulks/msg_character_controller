@@ -322,7 +322,6 @@ fn spawn_player(commands: &mut Commands) {
                 .with_upright_torque_enabled(false), // We handle rotation via orientation
             initial_orientation,
             MovementIntent::default(),
-            JumpRequest::default(),
         ))
         .insert((
             // Physics

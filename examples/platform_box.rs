@@ -216,7 +216,6 @@ fn spawn_player(commands: &mut Commands) {
                 .with_float_height(15.0)
                 .with_ground_cast_width(PLAYER_RADIUS),
             MovementIntent::default(),
-            JumpRequest::default(),
         ))
         .insert((
             // Physics
@@ -283,6 +282,19 @@ fn settings_ui(
             &mut ExternalForce,
             &mut MovementIntent,
             &mut JumpRequest,
+        ),
+        With<Player>,
+    >,
+    diagnostics_query: Query<
+        (
+            &ControllerConfig,
+            &CharacterController,
+            &Transform,
+            &Velocity,
+            Option<&MovementIntent>,
+            Option<&Grounded>,
+            Option<&TouchingWall>,
+            Option<&TouchingCeiling>,
         ),
         With<Player>,
     >,
@@ -450,7 +462,9 @@ fn diagnostics_ui(
                     transform: transform_ref,
                     velocity: velocity_ref,
                     movement_intent: movement,
-                    jump_request: jump,
+                    grounded: grounded.is_some(),
+                    touching_wall: wall,
+                    touching_ceiling: ceiling,
                 };
                 diagnostics_panel_ui(ui, &data);
             });
