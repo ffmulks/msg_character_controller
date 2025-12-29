@@ -66,8 +66,16 @@ pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
         let displacement = target_height - current_height;
         let spring_force = config.spring_strength * displacement - config.spring_damping * vertical_velocity;
 
+        // Clamp spring force to prevent overflow.
+        // Maximum force is based on counteracting gravity plus reasonable acceleration.
+        // This prevents the damping term from creating runaway forces when
+        // entering the spring zone at high velocity.
+        let gravity_magnitude = controller.gravity.length();
+        let max_spring_force = gravity_magnitude * 3.0 + config.spring_strength * config.ground_tolerance;
+        let clamped_spring_force = spring_force.clamp(-max_spring_force, max_spring_force);
+
         // Apply force along up direction
-        let force = up * spring_force;
+        let force = up * clamped_spring_force;
         B::apply_force(world, entity, force);
     }
 }
