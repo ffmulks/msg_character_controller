@@ -15,7 +15,6 @@ pub struct DiagnosticsData<'a> {
     pub transform: &'a Transform,
     pub velocity: &'a Velocity,
     pub movement_intent: Option<&'a MovementIntent>,
-    pub jump_request: Option<&'a JumpRequest>,
     pub external_force: Option<&'a ExternalForce>,
     pub external_impulse: Option<&'a ExternalImpulse>,
 }
@@ -358,8 +357,8 @@ pub fn external_forces_ui(
 pub fn diagnostics_panel_ui(ui: &mut egui::Ui, data: &DiagnosticsData) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         position_velocity_ui(ui, data.transform, data.velocity);
-        ground_detection_ui(ui, data.controller, data.config, data.grounded);
-        wall_ceiling_ui(ui, data.controller, data.touching_wall, data.touching_ceiling);
+        ground_detection_ui(ui, data.controller, data.config);
+        wall_ceiling_ui(ui, data.controller);
         movement_intent_ui(ui, data.movement_intent);
         internal_state_ui(ui, data.controller);
         external_forces_ui(ui, data.external_force, data.external_impulse);

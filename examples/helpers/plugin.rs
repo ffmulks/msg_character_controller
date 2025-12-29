@@ -242,7 +242,6 @@ fn character_controller_diagnostics_ui_system<M: Component>(
             &Transform,
             &Velocity,
             Option<&MovementIntent>,
-            Option<&JumpRequest>,
             Option<&ExternalForce>,
             Option<&ExternalImpulse>,
         ),
@@ -272,7 +271,6 @@ fn character_controller_diagnostics_ui_system<M: Component>(
             transform_ref,
             velocity_ref,
             movement,
-            jump,
             ext_force,
             ext_impulse,
         )) = diagnostics_query.single()
@@ -290,7 +288,6 @@ fn character_controller_diagnostics_ui_system<M: Component>(
                         transform: transform_ref,
                         velocity: velocity_ref,
                         movement_intent: movement,
-                        jump_request: jump,
                         external_force: ext_force,
                         external_impulse: ext_impulse,
                     };
