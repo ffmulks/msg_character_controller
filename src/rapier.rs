@@ -338,7 +338,7 @@ fn rapier_ground_detection(
         return;
     };
 
-    let dt = time.delta_secs();
+    let delta = time.delta();
 
     for (
         entity,
@@ -375,9 +375,6 @@ fn rapier_ground_detection(
         // Compute rotation angle for the shape to align with ideal up direction (from gravity).
         // This ensures the shapecast shape is oriented correctly in world space.
         let shape_rotation = controller.ideal_up_angle() - std::f32::consts::FRAC_PI_2;
-
-        // Store previous time_since_grounded
-        let prev_time_since_grounded = controller.time_since_grounded;
 
         // Reset detection state
         controller.reset_detection_state();
@@ -423,13 +420,16 @@ fn rapier_ground_detection(
             }
         }
 
-        // Update time since grounded
+        // Update coyote timer
         let is_grounded = controller.is_grounded(config);
         if is_grounded {
-            controller.time_since_grounded = 0.0;
+            controller.reset_coyote_timer(config.coyote_time);
         } else {
-            controller.time_since_grounded = prev_time_since_grounded + dt;
+            controller.tick_coyote_timer(delta);
         }
+
+        // Tick the jump spring filter timer
+        controller.jump_spring_filter_timer.tick(delta);
     }
 }
 

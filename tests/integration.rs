@@ -827,20 +827,20 @@ mod coyote_time {
         let config = app.world().get::<ControllerConfig>(character).unwrap();
 
         println!(
-            "PROOF: is_grounded={}, time_since_grounded={}",
+            "PROOF: is_grounded={}, in_coyote_time={}",
             controller.is_grounded(config),
-            controller.time_since_grounded
+            controller.in_coyote_time()
         );
 
-        // PROOF: time_since_grounded should be zero when grounded
+        // PROOF: coyote timer should be active (not finished) when grounded
         assert!(
-            controller.time_since_grounded < 0.02,
-            "time_since_grounded should be zero when grounded"
+            controller.in_coyote_time(),
+            "coyote timer should be active when grounded"
         );
     }
 
     #[test]
-    fn time_since_grounded_accumulates_when_airborne() {
+    fn coyote_timer_expires_when_airborne() {
         let mut app = create_test_app();
 
         // No ground
@@ -852,15 +852,15 @@ mod coyote_time {
         let config = app.world().get::<ControllerConfig>(character).unwrap();
 
         println!(
-            "PROOF: is_grounded={}, time_since_grounded={}",
+            "PROOF: is_grounded={}, in_coyote_time={}",
             controller.is_grounded(config),
-            controller.time_since_grounded
+            controller.in_coyote_time()
         );
 
-        // PROOF: time_since_grounded should accumulate (30 frames at 60Hz = 0.5s)
+        // PROOF: coyote timer should have expired (30 frames at 60Hz = 0.5s > coyote_time=0.15s)
         assert!(
-            controller.time_since_grounded > 0.3,
-            "time_since_grounded should accumulate"
+            !controller.in_coyote_time(),
+            "coyote timer should expire after being airborne long enough"
         );
     }
 }
