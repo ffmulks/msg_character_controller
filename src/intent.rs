@@ -135,11 +135,20 @@ impl MovementIntent {
 
     /// Request a jump at the given time.
     ///
-    /// If there's already a pending jump request, this does nothing.
-    /// This preserves coyote time behavior by not overwriting an existing
-    /// request that might still be valid.
+    /// If there's already a pending jump request that is still within a
+    /// reasonable buffer window, this does nothing. Expired requests are
+    /// overwritten to prevent them from blocking future inputs.
     pub fn request_jump(&mut self, current_time: f32) {
-        if self.jump_request.is_none() {
+        // Maximum buffer time - if a request is older than this, it's definitely
+        // expired and should be replaced. This is generous to cover any config.
+        const MAX_BUFFER_TIME: f32 = 0.5;
+
+        let should_set = match &self.jump_request {
+            None => true,
+            Some(existing) => (current_time - existing.request_time) >= MAX_BUFFER_TIME,
+        };
+
+        if should_set {
             self.jump_request = Some(JumpRequest::new(current_time));
         }
     }
@@ -360,12 +369,21 @@ mod tests {
     }
 
     #[test]
-    fn movement_intent_request_jump_does_not_overwrite() {
+    fn movement_intent_request_jump_does_not_overwrite_recent() {
         let mut intent = MovementIntent::new();
         intent.request_jump(1.0);
-        intent.request_jump(2.0); // Should not overwrite
+        intent.request_jump(1.1); // Should not overwrite (within 0.5s buffer)
 
         assert_eq!(intent.jump_request.unwrap().request_time, 1.0);
+    }
+
+    #[test]
+    fn movement_intent_request_jump_overwrites_expired() {
+        let mut intent = MovementIntent::new();
+        intent.request_jump(1.0);
+        intent.request_jump(2.0); // Should overwrite (0.5s+ later)
+
+        assert_eq!(intent.jump_request.unwrap().request_time, 2.0);
     }
 
     #[test]
