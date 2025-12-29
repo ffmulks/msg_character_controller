@@ -15,141 +15,60 @@ use crate::state::{Airborne, Grounded, TouchingCeiling, TouchingWall};
 
 use crate::{GravityMode, GravityModeResource};
 
-/// Data collected for spring force calculation.
-struct SpringData {
-    flying_up: bool,
-}
-
 /// Apply the floating spring force to maintain riding height.
 ///
-/// The spring is active when:
-/// - Distance <= riding_height + ground_tolerance
-/// - Distance > capsule_half_height - EPSILON (physics collision threshold)
-///
-/// The spring RESTORES the riding_height (float_height + capsule_half_height).
-/// - Below target (x > 0): Push UP to reach float height
-/// - Above target (x < 0): Push DOWN into tolerance zone
-///
-/// Uses the formula: `springForce = (x * strength) - (relVel * damper)`
-/// where:
-/// - x = riding_height - floor.distance (displacement from target)
-/// - relVel = velocity component toward ground
-///
-/// Exceptions (spring does not push up):
-/// - While actively flying upward (player input)
+/// Simple spring-damper: F = k * displacement - c * velocity
+/// - displacement = target_height - current_height (positive = below target)
+/// - velocity = vertical velocity (positive = moving up)
 pub fn apply_floating_spring<B: CharacterPhysicsBackend>(world: &mut World) {
-    // Collect entities that need floating spring
-    let entities: Vec<(
-        Entity,
-        ControllerConfig,
-        CharacterOrientation,
-        CharacterController,
-        SpringData,
-    )> = world
-        .query::<(
-            Entity,
-            &ControllerConfig,
-            Option<&CharacterOrientation>,
-            &CharacterController,
-            Option<&MovementIntent>,
-        )>()
-        .iter(world)
-        .map(|(e, config, orientation, controller, movement)| {
-            let spring_data = SpringData {
-                flying_up: movement.map_or(false, |m| m.is_flying_up()),
-            };
-            (
-                e,
-                *config,
-                orientation.copied().unwrap_or_default(),
-                controller.clone(),
-                spring_data,
-            )
-        })
-        .collect();
+    let entities: Vec<(Entity, ControllerConfig, CharacterOrientation, CharacterController)> =
+        world
+            .query::<(
+                Entity,
+                &ControllerConfig,
+                Option<&CharacterOrientation>,
+                &CharacterController,
+            )>()
+            .iter(world)
+            .map(|(e, config, orientation, controller)| {
+                (
+                    e,
+                    *config,
+                    orientation.copied().unwrap_or_default(),
+                    controller.clone(),
+                )
+            })
+            .collect();
 
-    for (entity, config, orientation, controller, spring_data) in entities {
-        // Skip if no floor detected
+    for (entity, config, orientation, controller) in entities {
         let Some(ref floor) = controller.floor else {
             continue;
         };
 
-        let velocity = B::get_velocity(world, entity);
         let up = orientation.up();
-        let gravity = controller.gravity;
+        let velocity = B::get_velocity(world, entity);
+        let vertical_velocity = velocity.dot(up);
 
-        // Calculate mass ratio for force scaling
-        // When config.mass is Some, forces are scaled so config parameters produce
-        // consistent acceleration. When None, apply forces without scaling.
-        let mass_ratio = match config.mass {
-            Some(config_mass) => config_mass.max(0.00001),
-            None => 1.0, // No scaling - apply forces directly
-        };
+        // Target height and current height
+        let target_height = controller.riding_height(&config);
+        let current_height = floor.distance;
 
-        // Calculate riding height and spring thresholds
-        let riding_height = controller.riding_height(&config);
-        let max_spring_range = riding_height + config.ground_tolerance;
-        let min_spring_range = controller.capsule_half_height() - f32::EPSILON;
-
-        // Check if in spring range
-        let in_spring_range =
-            floor.distance <= max_spring_range && floor.distance > min_spring_range;
-
-        if !in_spring_range {
-            // Apply extra fall gravity when outside spring range and falling
-            // TODO Only do that after the zenite a jump for 1 sec or until grounded
-            let vertical_velocity = velocity.dot(up);
-            if vertical_velocity < 0.0 && config.extra_fall_gravity > 0.0 {
-                let extra_gravity_force = gravity * config.extra_fall_gravity * mass_ratio;
-                B::apply_force(world, entity, extra_gravity_force);
-            }
+        // Only apply spring within active range
+        let max_range = target_height + config.ground_tolerance;
+        let min_range = controller.capsule_half_height();
+        if current_height > max_range || current_height < min_range {
             continue;
         }
 
-        // Calculate displacement from target (positive = below target, needs upward force)
-        // x = riding_height - floor.distance
-        let x = riding_height - floor.distance;
+        // Spring-damper formula: F = k * x - c * v
+        // x = displacement from target (positive = below target, needs push up)
+        // v = vertical velocity (positive = moving up, damp it)
+        let displacement = target_height - current_height;
+        let spring_force = config.spring_strength * displacement - config.spring_damping * vertical_velocity;
 
-        // Get velocity component toward ground (in ground normal direction)
-        // Positive relVel means moving toward ground
-        let ground_normal = floor.normal;
-        let rel_vel = -velocity.dot(ground_normal);
-
-        // Spring force formula: springForce = (x * strength) - (relVel * damper)
-        // x > 0: below target → push UP
-        // x < 0: above target → push DOWN
-        // Scale by mass_ratio so config values work consistently across different masses
-        let spring_force =
-            ((x * config.spring_strength) - (rel_vel * config.spring_damping)) * mass_ratio;
-
-        // Only suppress upward spring during active flight upward
-        // Jumping is handled by the impulse system - spring should still work normally
-        let vertical_velocity = velocity.dot(up);
-        let suppress_upward = spring_data.flying_up && vertical_velocity > 0.0;
-
-        if spring_force > 0.0 && suppress_upward {
-            // Flying up - don't fight the player's input
-        } else {
-            let force = up * spring_force;
-            B::apply_force(world, entity, force);
-        }
-
-        // SLOPE SNAPPING: Apply additional downward force on slopes
-        if controller.is_grounded(&config) && controller.slope_angle > 0.05 {
-            let slope_factor = controller.slope_angle.sin();
-            let normal_velocity = velocity.dot(ground_normal);
-            if normal_velocity < 50.0 && x.abs() < config.ground_tolerance * 2.0 {
-                let snap_strength = config.spring_strength * 0.3 * slope_factor * mass_ratio;
-                let snap_force = -ground_normal * snap_strength;
-                B::apply_force(world, entity, snap_force);
-            }
-        }
-
-        // Apply extra fall gravity when falling
-        if vertical_velocity < 0.0 && config.extra_fall_gravity > 0.0 {
-            let extra_gravity_force = gravity * config.extra_fall_gravity * mass_ratio;
-            B::apply_force(world, entity, extra_gravity_force);
-        }
+        // Apply force along up direction
+        let force = up * spring_force;
+        B::apply_force(world, entity, force);
     }
 }
 
