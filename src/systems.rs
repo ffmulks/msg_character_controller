@@ -204,7 +204,7 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
 /// When no step is detected, `active_stair_height` is reset to 0.
 pub fn accumulate_stair_climb_force<B: CharacterPhysicsBackend>(world: &mut World) {
     // Collect entities with stair config
-    let entities: Vec<(Entity, ControllerConfig, CharacterController, StairConfig, CharacterOrientation)> = world
+    let entities: Vec<(Entity, ControllerConfig, CharacterController, CharacterOrientation)> = world
         .query::<(
             Entity,
             &ControllerConfig,

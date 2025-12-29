@@ -252,6 +252,51 @@ impl CharacterController {
         self.gravity = gravity;
     }
 
+    /// Get the ideal "up" direction for raycasts, derived from gravity.
+    ///
+    /// This returns the opposite of the normalized gravity vector.
+    /// Raycasts use this instead of CharacterOrientation to ensure they
+    /// work correctly regardless of the actor's physical rotation.
+    ///
+    /// If gravity is zero, defaults to `Vec2::Y`.
+    #[inline]
+    pub fn ideal_up(&self) -> Vec2 {
+        let normalized = self.gravity.normalize_or_zero();
+        if normalized == Vec2::ZERO {
+            Vec2::Y
+        } else {
+            -normalized
+        }
+    }
+
+    /// Get the ideal "down" direction for raycasts (same as gravity direction).
+    #[inline]
+    pub fn ideal_down(&self) -> Vec2 {
+        -self.ideal_up()
+    }
+
+    /// Get the ideal "right" direction for raycasts (perpendicular to ideal up).
+    #[inline]
+    pub fn ideal_right(&self) -> Vec2 {
+        let up = self.ideal_up();
+        Vec2::new(up.y, -up.x)
+    }
+
+    /// Get the ideal "left" direction for raycasts (perpendicular to ideal up).
+    #[inline]
+    pub fn ideal_left(&self) -> Vec2 {
+        -self.ideal_right()
+    }
+
+    /// Get the angle of the ideal up direction (radians from world +X axis).
+    ///
+    /// This is used for rotating shapes in raycasts to align with the ideal
+    /// coordinate system.
+    #[inline]
+    pub fn ideal_up_angle(&self) -> f32 {
+        self.ideal_up().to_angle()
+    }
+
     /// Builder: set stair configuration.
     pub fn with_stair_config(mut self, config: StairConfig) -> Self {
         self.stair_config = Some(config);
@@ -1072,5 +1117,63 @@ mod tests {
         // With stair climbing
         controller.active_stair_height = 5.0;
         assert_eq!(controller.effective_riding_height(&config), base_height + 5.0);
+    }
+
+    #[test]
+    fn controller_ideal_up_from_default_gravity() {
+        let controller = CharacterController::new();
+        // Default gravity is (0, -980), so ideal up should be (0, 1)
+        let up = controller.ideal_up();
+        assert!((up - Vec2::Y).length() < 0.001);
+    }
+
+    #[test]
+    fn controller_ideal_directions_perpendicular() {
+        let controller = CharacterController::new();
+        let up = controller.ideal_up();
+        let down = controller.ideal_down();
+        let left = controller.ideal_left();
+        let right = controller.ideal_right();
+
+        // Up and down should be opposite
+        assert!((up + down).length() < 0.001);
+        // Left and right should be opposite
+        assert!((left + right).length() < 0.001);
+        // Up and right should be perpendicular
+        assert!(up.dot(right).abs() < 0.001);
+    }
+
+    #[test]
+    fn controller_ideal_up_with_custom_gravity() {
+        // Gravity pointing left (sideways)
+        let mut controller = CharacterController::new();
+        controller.set_gravity(Vec2::new(-500.0, 0.0));
+
+        // Ideal up should be opposite of gravity direction (pointing right)
+        let up = controller.ideal_up();
+        assert!((up - Vec2::X).length() < 0.001);
+
+        // Right should be down in world terms
+        let right = controller.ideal_right();
+        assert!((right - Vec2::NEG_Y).length() < 0.001);
+    }
+
+    #[test]
+    fn controller_ideal_up_with_zero_gravity() {
+        let mut controller = CharacterController::new();
+        controller.set_gravity(Vec2::ZERO);
+
+        // With zero gravity, should default to Vec2::Y
+        let up = controller.ideal_up();
+        assert!((up - Vec2::Y).length() < 0.001);
+    }
+
+    #[test]
+    fn controller_ideal_up_angle() {
+        let controller = CharacterController::new();
+        // Default gravity is down, so ideal up is Vec2::Y
+        // Vec2::Y.to_angle() should be PI/2
+        let angle = controller.ideal_up_angle();
+        assert!((angle - FRAC_PI_2).abs() < 0.001);
     }
 }
