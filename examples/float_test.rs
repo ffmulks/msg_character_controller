@@ -15,16 +15,26 @@
 mod helpers;
 
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::EguiPlugin;
 use bevy_rapier2d::prelude::*;
 use helpers::{
-    float_settings_ui, jump_settings_ui, movement_settings_ui, sensor_settings_ui,
-    slope_settings_ui, spring_settings_ui, upright_torque_settings_ui, ControlsPlugin, Player,
+    CharacterControllerUiPlugin, ControlsPlugin, DefaultControllerSettings, Player, SpawnConfig,
 };
 use msg_character_controller::prelude::*;
 
 const PLAYER_RADIUS: f32 = 6.0;
 const PLAYER_HALF_HEIGHT: f32 = 8.0;
+
+fn spawn_position() -> Vec2 {
+    Vec2::new(0.0, 200.0) // 400 units above platform!
+}
+
+fn default_config() -> ControllerConfig {
+    ControllerConfig::player()
+        .with_float_height(2.0) // Gap between capsule bottom and ground
+        .with_spring(20000.0, 500.0) // VERY strong spring
+        .with_ground_cast_width(PLAYER_RADIUS)
+}
 
 fn main() {
     App::new()
@@ -45,10 +55,17 @@ fn main() {
         .add_plugins(ControlsPlugin::default())
         // Egui for settings UI
         .add_plugins(EguiPlugin::default())
+        // Configure spawn position and default settings for the UI plugin
+        .insert_resource(SpawnConfig::new(spawn_position()))
+        .insert_resource(DefaultControllerSettings::new(
+            default_config(),
+            Vec2::new(0.0, -980.0),
+        ))
+        // Character controller UI panels (unified plugin with settings + diagnostics)
+        .add_plugins(CharacterControllerUiPlugin::<Player>::default())
         // Systems
         .add_systems(Startup, setup)
         .add_systems(Update, debug_floating)
-        .add_systems(EguiPrimaryContextPass, settings_ui)
         .run();
 }
 
@@ -91,7 +108,7 @@ fn setup(mut commands: Commands) {
     ));
 
     // Spawn player HIGH ABOVE the platform to test floating
-    let spawn_pos = Vec2::new(0.0, 200.0); // 400 units above platform!
+    let spawn_pos = spawn_position();
 
     // Calculate expected float position
     // float_height is the gap between the BOTTOM of the capsule and the ground
@@ -124,10 +141,7 @@ fn setup(mut commands: Commands) {
         .insert((
             // Character controller with explicit float height and gravity
             CharacterController::with_gravity(Vec2::new(0.0, -980.0)),
-            ControllerConfig::player()
-                .with_float_height(float_height) // Gap between capsule bottom and ground
-                .with_spring(20000.0, 500.0) // VERY strong spring
-                .with_ground_cast_width(PLAYER_RADIUS),
+            default_config(),
             MovementIntent::default(),
         ))
         .insert((
@@ -206,119 +220,4 @@ fn debug_floating(
     } else {
         color.0 = Color::srgb(0.9, 0.3, 0.3); // Red - no ground
     }
-}
-
-// ==================== Settings UI ====================
-
-fn settings_ui(
-    mut contexts: EguiContexts,
-    mut query: Query<
-        (
-            &mut ControllerConfig,
-            &mut CharacterController,
-            &mut Transform,
-            &mut Velocity,
-            &mut ExternalImpulse,
-            &mut ExternalForce,
-            &mut MovementIntent,
-        ),
-        With<Player>,
-    >,
-    mut frame_count: Local<u32>,
-) {
-    let Ok((
-        mut config,
-        mut controller,
-        mut transform,
-        mut velocity,
-        mut external_impulse,
-        mut external_force,
-        mut movement_intent,
-    )) = query.single_mut()
-    else {
-        return;
-    };
-
-    // Increment frame counter
-    *frame_count += 1;
-
-    // Skip the first few frames to ensure egui is fully initialized
-    if *frame_count <= 2 {
-        return;
-    }
-
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-
-    egui::Window::new("Controller Settings")
-        .default_pos([10.0, 50.0])
-        .default_width(300.0)
-        .show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                // Reload button at the top
-                ui.horizontal(|ui| {
-                    if ui.button("Reset to Defaults").clicked() {
-                        *config = ControllerConfig::player()
-                            .with_float_height(2.0)
-                            .with_spring(20000.0, 500.0)
-                            .with_ground_cast_width(PLAYER_RADIUS);
-                        controller.gravity = Vec2::new(0.0, -980.0);
-                    }
-                    if ui.button("Respawn Player").clicked() {
-                        // Reset position to spawn point (200 units above platform)
-                        let spawn_pos = Vec2::new(0.0, 200.0);
-                        transform.translation = spawn_pos.extend(1.0);
-                        transform.rotation = Quat::IDENTITY;
-
-                        // Reset velocity
-                        velocity.linvel = Vec2::ZERO;
-                        velocity.angvel = 0.0;
-
-                        // Reset external impulse and force
-                        external_impulse.impulse = Vec2::ZERO;
-                        external_impulse.torque_impulse = 0.0;
-                        external_force.force = Vec2::ZERO;
-                        external_force.torque = 0.0;
-
-                        // Reset controller state (keep gravity)
-                        let gravity = controller.gravity;
-                        *controller = CharacterController::with_gravity(gravity);
-
-                        // Reset movement intent
-                        movement_intent.clear();
-                    }
-                });
-                ui.add_space(8.0);
-
-                // Gravity Settings (directly on CharacterController)
-                ui.collapsing("Gravity Settings", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Gravity X:");
-                        ui.add(
-                            egui::DragValue::new(&mut controller.gravity.x)
-                                .speed(10.0)
-                                .range(-2000.0..=2000.0),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Gravity Y:");
-                        ui.add(
-                            egui::DragValue::new(&mut controller.gravity.y)
-                                .speed(10.0)
-                                .range(-2000.0..=2000.0),
-                        );
-                    });
-                });
-
-                // Use helper functions for standard config sections
-                float_settings_ui(ui, &mut config);
-                spring_settings_ui(ui, &mut config);
-                movement_settings_ui(ui, &mut config);
-                slope_settings_ui(ui, &mut config);
-                sensor_settings_ui(ui, &mut config);
-                jump_settings_ui(ui, &mut config);
-                upright_torque_settings_ui(ui, &mut config);
-            });
-        });
 }
