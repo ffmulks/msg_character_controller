@@ -581,7 +581,7 @@ impl Default for ControllerConfig {
             ground_cast_multiplier: 1.0,
             ground_cast_width: 12.0,
             wall_cast_multiplier: 1.0,
-            wall_cast_height: 0.0,
+            wall_cast_height: 12.0,
             ceiling_cast_multiplier: 1.0,
             ceiling_cast_width: 12.0,
 
