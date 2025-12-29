@@ -279,6 +279,10 @@ fn settings_ui(
             &mut CharacterController,
             &mut Transform,
             &mut Velocity,
+            &mut ExternalImpulse,
+            &mut ExternalForce,
+            &mut MovementIntent,
+            &mut JumpRequest,
         ),
         With<Player>,
     >,
@@ -299,7 +303,16 @@ fn settings_ui(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut ui_state: Local<UiState>,
 ) {
-    let Ok((mut config, mut controller, mut transform, mut velocity)) = config_query.single_mut()
+    let Ok((
+        mut config,
+        mut controller,
+        mut transform,
+        mut velocity,
+        mut external_impulse,
+        mut external_force,
+        mut movement_intent,
+        mut jump_request,
+    )) = config_query.single_mut()
     else {
         return;
     };
@@ -359,8 +372,25 @@ fn settings_ui(
                     // Reset position to spawn point
                     let spawn_pos = Vec2::new(-200.0, -BOX_HEIGHT / 2.0 + WALL_THICKNESS + 50.0);
                     transform.translation = spawn_pos.extend(1.0);
+                    transform.rotation = Quat::IDENTITY;
+
+                    // Reset velocity
                     velocity.linvel = Vec2::ZERO;
                     velocity.angvel = 0.0;
+
+                    // Reset external impulse and force
+                    external_impulse.impulse = Vec2::ZERO;
+                    external_impulse.torque_impulse = 0.0;
+                    external_force.force = Vec2::ZERO;
+                    external_force.torque = 0.0;
+
+                    // Reset controller state (keep gravity)
+                    let gravity = controller.gravity;
+                    *controller = CharacterController::with_gravity(gravity);
+
+                    // Reset movement intent and jump request
+                    movement_intent.clear();
+                    jump_request.reset();
                 }
             });
             ui.add_space(8.0);
