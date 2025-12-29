@@ -225,7 +225,13 @@ pub fn apply_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
 
 /// Apply movement (walking and flying) based on intent.
 ///
-/// This unified system handles both horizontal walking and vertical propulsion.
+/// This unified system handles both horizontal walking and vertical propulsion
+/// using impulses rather than direct velocity manipulation. All impulses are scaled
+/// by mass for consistent acceleration regardless of character mass.
+///
+/// For the floating controller, friction is simulated internally since the character
+/// hovers above the ground and doesn't use Rapier's contact friction.
+///
 /// Flying downwards is disabled while grounded.
 pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
     let time = world
@@ -260,14 +266,11 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
         .collect();
 
     // Get fixed timestep delta
-    let dt = world
-        .get_resource::<Time<Fixed>>()
-        .map(|t| t.delta_secs())
-        .filter(|&d| d > 0.0)
-        .unwrap_or(1.0 / 60.0);
+    let dt = B::get_fixed_timestep(world);
 
     for (entity, config, orientation, intent, controller) in entities {
         let current_velocity = B::get_velocity(world, entity);
+        let mass = B::get_mass(world, entity);
         let up = orientation.up();
         let right = orientation.right();
 
@@ -281,63 +284,77 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
             config.acceleration * config.air_control
         };
 
-        let new_velocity = if is_grounded && controller.ground_detected() {
-            // GROUNDED: Move along slope surface
+        if is_grounded && controller.ground_detected() {
+            // GROUNDED: Move along slope surface using forces
             let slope_tangent = controller.ground_tangent();
-            let slope_normal = controller.ground_normal();
-
             let current_slope_speed = current_velocity.dot(slope_tangent);
+
+            // Calculate velocity change toward target, clamped by max acceleration
             let velocity_diff = desired_walk_speed - current_slope_speed;
             let max_change = walk_accel * dt;
             let change = velocity_diff.clamp(-max_change, max_change);
 
-            let friction_multiplier = if !intent.is_walking() {
+            // Apply friction when not walking
+            let friction_factor = if !intent.is_walking() {
                 1.0 - config.friction
             } else {
                 1.0
             };
+            let new_slope_speed = (current_slope_speed + change) * friction_factor;
+            let slope_velocity_delta = new_slope_speed - current_slope_speed;
 
-            let new_slope_speed = (current_slope_speed + change) * friction_multiplier;
+            // Apply impulse along slope tangent: I = m * dv
+            let walk_impulse = slope_tangent * slope_velocity_delta * mass;
+            B::apply_impulse(world, entity, walk_impulse);
 
+            // Dampen normal velocity: preserve 50% of downward motion, zero out upward
+            let slope_normal = controller.ground_normal();
             let normal_velocity = current_velocity.dot(slope_normal);
-            let preserved_normal = if normal_velocity < 0.0 {
+            let target_normal = if normal_velocity < 0.0 {
                 normal_velocity * 0.5
             } else {
                 0.0
             };
-
-            slope_tangent * new_slope_speed + slope_normal * preserved_normal
+            let normal_velocity_delta = target_normal - normal_velocity;
+            let normal_impulse = slope_normal * normal_velocity_delta * mass;
+            B::apply_impulse(world, entity, normal_impulse);
         } else {
-            // AIRBORNE: Use world-space coordinates
+            // AIRBORNE: Use world-space horizontal axis
             let current_horizontal = current_velocity.dot(right);
+
+            // Calculate velocity change toward target, clamped by max acceleration
             let velocity_diff = desired_walk_speed - current_horizontal;
             let max_change = walk_accel * dt;
             let change = velocity_diff.clamp(-max_change, max_change);
-            let new_horizontal = current_horizontal + change;
 
-            let vertical_velocity = current_velocity.dot(up);
-            right * new_horizontal + up * vertical_velocity
-        };
+            // Apply impulse along right axis: I = m * dv
+            let walk_impulse = right * change * mass;
+            B::apply_impulse(world, entity, walk_impulse);
+        }
 
         // === FLYING ===
         // Flying downwards is disabled while grounded
         let fly_direction = intent.fly;
         let should_apply_fly = intent.is_flying() && !(is_grounded && intent.is_flying_down());
 
-        let final_velocity = if should_apply_fly {
-            let current_vertical = new_velocity.dot(up);
+        if should_apply_fly {
+            let current_vertical = current_velocity.dot(up);
             let desired_vertical = intent.effective_fly() * config.max_speed;
 
             let mut fly_accel = config.acceleration;
-            // Boost upward propulsion by gravity magnitude
+            // Boost upward propulsion by gravity magnitude to counteract gravity
             if fly_direction > 0.0 {
                 fly_accel += controller.gravity.length();
             }
 
+            // Calculate velocity change toward target, clamped by max acceleration
             let velocity_diff = desired_vertical - current_vertical;
             let max_change = fly_accel * dt;
             let change = velocity_diff.clamp(-max_change, max_change);
-            let new_vertical = current_vertical + change;
+
+            // Apply impulse along up axis: I = m * dv
+            let fly_impulse = up * change * mass;
+            B::apply_impulse(world, entity, fly_impulse);
 
             // Record upward propulsion time when actively flying up
             if fly_direction > 0.0 && change > 0.0 {
@@ -345,14 +362,7 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
                     controller.record_upward_propulsion(time);
                 }
             }
-
-            let horizontal_velocity = new_velocity.dot(right);
-            right * horizontal_velocity + up * new_vertical
-        } else {
-            new_velocity
-        };
-
-        B::set_velocity(world, entity, final_velocity);
+        }
     }
 }
 
