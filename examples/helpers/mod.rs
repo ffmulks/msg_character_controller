@@ -8,6 +8,7 @@
 mod config_panel;
 mod controls_plugin;
 mod diagnostics_panel;
+mod mesh_shapes;
 mod plugin;
 mod respawn;
 
@@ -16,6 +17,8 @@ pub use config_panel::*;
 pub use controls_plugin::*;
 #[allow(unused_imports)]
 pub use diagnostics_panel::*;
+#[allow(unused_imports)]
+pub use mesh_shapes::*;
 #[allow(unused_imports)]
 pub use plugin::*;
 #[allow(unused_imports)]

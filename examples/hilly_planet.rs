@@ -18,9 +18,11 @@
 mod helpers;
 
 use bevy::prelude::*;
+use bevy::sprite::ColorMaterial;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 use bevy_rapier2d::prelude::*;
 use helpers::{
+    create_capsule_mesh, create_polygon_mesh, create_rectangle_mesh, create_triangle_mesh,
     CharacterControllerUiPlugin, CharacterControllerUiState, ControlsPlugin,
     DefaultControllerSettings, Player, SpawnConfig,
 };
@@ -143,7 +145,11 @@ fn main() {
 
 // ==================== Setup ====================
 
-fn setup(mut commands: Commands) {
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     // Camera
     commands.spawn((
         Camera2d,
@@ -151,10 +157,10 @@ fn setup(mut commands: Commands) {
     ));
 
     // Spawn hilly planet
-    spawn_hilly_planet(&mut commands);
+    spawn_hilly_planet(&mut commands, &mut meshes, &mut materials);
 
     // Spawn player on top of planet
-    spawn_player(&mut commands);
+    spawn_player(&mut commands, &mut meshes, &mut materials);
 
     // UI instructions
     commands.spawn((
@@ -211,7 +217,11 @@ fn setup(mut commands: Commands) {
     ));
 }
 
-fn spawn_hilly_planet(commands: &mut Commands) {
+fn spawn_hilly_planet(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+) {
     // Generate vertices for the hilly planet surface
     let mut vertices: Vec<Vec2> = Vec::with_capacity(PLANET_SEGMENTS);
 
@@ -233,38 +243,44 @@ fn spawn_hilly_planet(commands: &mut Commands) {
 
     let collider = Collider::polyline(vertices.clone(), Some(indices));
 
-    // Create a visual mesh for the planet (using a sprite for simplicity)
-    // The debug render will show the actual collision shape
+    // Create a polygon mesh that matches the hilly surface
+    let mesh = meshes.add(create_polygon_mesh(&vertices));
+    let material = materials.add(ColorMaterial::from_color(Color::srgb(0.2, 0.35, 0.2)));
+
     commands.spawn((
         Transform::from_translation(PLANET_CENTER.extend(-1.0)),
         GlobalTransform::default(),
         RigidBody::Fixed,
         collider,
-        Sprite {
-            color: Color::srgb(0.2, 0.35, 0.2),
-            custom_size: Some(Vec2::splat(PLANET_BASE_RADIUS * 2.0 + HILL_AMPLITUDE * 4.0)),
-            ..default()
-        },
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
     ));
 
     // Add some distinct landmark features on the surface
 
     // A flat platform area (good landing spot)
-    spawn_surface_platform(commands, PI * 0.5, 60.0, 8.0); // Top
+    spawn_surface_platform(commands, meshes, materials, PI * 0.5, 60.0, 8.0); // Top
 
     // A ramp/slope structure
-    spawn_surface_slope(commands, PI * 0.25); // Upper right
+    spawn_surface_slope(commands, meshes, materials, PI * 0.25); // Upper right
 
     // Another platform on the side
-    spawn_surface_platform(commands, PI, 50.0, 6.0); // Left side
+    spawn_surface_platform(commands, meshes, materials, PI, 50.0, 6.0); // Left side
 
     // Small stepping stones
-    spawn_surface_platform(commands, PI * 1.5, 30.0, 5.0); // Bottom
-    spawn_surface_platform(commands, PI * 1.75, 25.0, 5.0); // Bottom right
+    spawn_surface_platform(commands, meshes, materials, PI * 1.5, 30.0, 5.0); // Bottom
+    spawn_surface_platform(commands, meshes, materials, PI * 1.75, 25.0, 5.0); // Bottom right
 }
 
 /// Spawn a platform on the planet surface at a given angle.
-fn spawn_surface_platform(commands: &mut Commands, angle: f32, width: f32, height: f32) {
+fn spawn_surface_platform(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    angle: f32,
+    width: f32,
+    height: f32,
+) {
     let direction = Vec2::new(angle.cos(), angle.sin());
     let surface_radius = planet_radius_at_angle(angle);
     let position = PLANET_CENTER + direction * (surface_radius + height / 2.0 + 5.0);
@@ -272,21 +288,26 @@ fn spawn_surface_platform(commands: &mut Commands, angle: f32, width: f32, heigh
     // Rotation to align with surface (tangent)
     let rotation = Quat::from_rotation_z(angle - PI / 2.0);
 
+    let mesh = meshes.add(create_rectangle_mesh(width / 2.0, height / 2.0));
+    let material = materials.add(ColorMaterial::from_color(Color::srgb(0.4, 0.5, 0.35)));
+
     commands.spawn((
         Transform::from_translation(position.extend(0.0)).with_rotation(rotation),
         GlobalTransform::default(),
         RigidBody::Fixed,
         Collider::cuboid(width / 2.0, height / 2.0),
-        Sprite {
-            color: Color::srgb(0.4, 0.5, 0.35),
-            custom_size: Some(Vec2::new(width, height)),
-            ..default()
-        },
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
     ));
 }
 
 /// Spawn a triangular slope on the planet surface.
-fn spawn_surface_slope(commands: &mut Commands, angle: f32) {
+fn spawn_surface_slope(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    angle: f32,
+) {
     let direction = Vec2::new(angle.cos(), angle.sin());
     let surface_radius = planet_radius_at_angle(angle);
     let position = PLANET_CENTER + direction * (surface_radius + 20.0);
@@ -303,20 +324,26 @@ fn spawn_surface_slope(commands: &mut Commands, angle: f32) {
 
     let collider = Collider::convex_hull(&vertices).expect("Failed to create slope collider");
 
+    // Create triangle mesh matching the collider
+    let triangle_vertices = [vertices[0], vertices[1], vertices[2]];
+    let mesh = meshes.add(create_triangle_mesh(&triangle_vertices));
+    let material = materials.add(ColorMaterial::from_color(Color::srgb(0.5, 0.4, 0.3)));
+
     commands.spawn((
         Transform::from_translation(position.extend(0.0)).with_rotation(rotation),
         GlobalTransform::default(),
         RigidBody::Fixed,
         collider,
-        Sprite {
-            color: Color::srgb(0.5, 0.4, 0.3),
-            custom_size: Some(Vec2::new(60.0, 40.0)),
-            ..default()
-        },
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
     ));
 }
 
-fn spawn_player(commands: &mut Commands) {
+fn spawn_player(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+) {
     // Spawn on top of the planet
     let spawn_angle = PI / 2.0; // Top of planet
     let direction = Vec2::new(spawn_angle.cos(), spawn_angle.sin());
@@ -329,16 +356,17 @@ fn spawn_player(commands: &mut Commands) {
     // Initial gravity pointing toward planet center
     let initial_gravity = -direction * GRAVITY_STRENGTH;
 
+    // Create capsule mesh matching the collider
+    let mesh = meshes.add(create_capsule_mesh(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS, 12));
+    let material = materials.add(ColorMaterial::from_color(Color::srgb(0.2, 0.6, 0.9)));
+
     commands
         .spawn((
             Player,
             Transform::from_translation(spawn_pos.extend(1.0)),
             GlobalTransform::default(),
-            Sprite {
-                color: Color::srgb(0.2, 0.6, 0.9),
-                custom_size: Some(Vec2::new(PLAYER_RADIUS * 2.0, PLAYER_SIZE)),
-                ..default()
-            },
+            Mesh2d(mesh),
+            MeshMaterial2d(material),
         ))
         .insert((
             // Character controller with initial gravity pointing toward planet

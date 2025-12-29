@@ -15,10 +15,12 @@
 mod helpers;
 
 use bevy::prelude::*;
+use bevy::sprite::ColorMaterial;
 use bevy_egui::EguiPlugin;
 use bevy_rapier2d::prelude::*;
 use helpers::{
-    CharacterControllerUiPlugin, ControlsPlugin, DefaultControllerSettings, Player, SpawnConfig,
+    create_capsule_mesh, create_rectangle_mesh, CharacterControllerUiPlugin, ControlsPlugin,
+    DefaultControllerSettings, Player, SpawnConfig,
 };
 use msg_character_controller::prelude::*;
 
@@ -72,7 +74,11 @@ fn main() {
 #[derive(Component)]
 struct DebugText;
 
-fn setup(mut commands: Commands) {
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     // Camera
     commands.spawn((Camera2d, Transform::from_xyz(0.0, 0.0, 1000.0)));
 
@@ -95,16 +101,16 @@ fn setup(mut commands: Commands) {
     ));
 
     // Ground platform (large so we can see floating clearly)
+    let platform_mesh = meshes.add(create_rectangle_mesh(400.0, 20.0));
+    let platform_material = materials.add(ColorMaterial::from_color(Color::srgb(0.3, 0.3, 0.3)));
+
     commands.spawn((
         Transform::from_translation(Vec3::new(0.0, -200.0, 0.0)),
         GlobalTransform::default(),
         RigidBody::Fixed,
         Collider::cuboid(400.0, 20.0),
-        Sprite {
-            color: Color::srgb(0.3, 0.3, 0.3),
-            custom_size: Some(Vec2::new(800.0, 40.0)),
-            ..default()
-        },
+        Mesh2d(platform_mesh),
+        MeshMaterial2d(platform_material),
     ));
 
     // Spawn player HIGH ABOVE the platform to test floating
@@ -127,16 +133,17 @@ fn setup(mut commands: Commands) {
     println!("Collider bottom offset: {}", collider_bottom_offset);
     println!("Expected center Y: {}", expected_hover_y);
 
+    // Create capsule mesh matching the collider
+    let player_mesh = meshes.add(create_capsule_mesh(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS, 12));
+    let player_material = materials.add(ColorMaterial::from_color(Color::srgb(0.2, 0.6, 0.9)));
+
     commands
         .spawn((
             Player,
             Transform::from_translation(spawn_pos.extend(1.0)),
             GlobalTransform::default(),
-            Sprite {
-                color: Color::srgb(0.2, 0.6, 0.9),
-                custom_size: Some(Vec2::new(PLAYER_RADIUS * 2.0, PLAYER_HALF_HEIGHT * 2.0)),
-                ..default()
-            },
+            Mesh2d(player_mesh),
+            MeshMaterial2d(player_material),
         ))
         .insert((
             // Character controller with explicit float height and gravity

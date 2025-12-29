@@ -17,9 +17,11 @@
 mod helpers;
 
 use bevy::prelude::*;
+use bevy::sprite::ColorMaterial;
 use bevy_egui::EguiPlugin;
 use bevy_rapier2d::prelude::*;
 use helpers::{
+    create_capsule_mesh, create_circle_mesh, create_rectangle_mesh, create_triangle_mesh,
     CharacterControllerUiPlugin, ControlsPlugin, DefaultControllerSettings, Player, SpawnConfig,
 };
 use msg_character_controller::prelude::*;
@@ -91,17 +93,21 @@ fn main() {
 
 // ==================== Setup ====================
 
-fn setup(mut commands: Commands) {
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     // Camera
     commands.spawn((Camera2d, Transform::from_xyz(0.0, 0.0, 1000.0)));
 
     // Spawn environment
-    spawn_box(&mut commands);
-    spawn_obstacles(&mut commands);
-    spawn_slope(&mut commands);
+    spawn_box(&mut commands, &mut meshes, &mut materials);
+    spawn_obstacles(&mut commands, &mut meshes, &mut materials);
+    spawn_slope(&mut commands, &mut meshes, &mut materials);
 
     // Spawn player
-    spawn_player(&mut commands);
+    spawn_player(&mut commands, &mut meshes, &mut materials);
 
     // UI instructions - use Pickable::IGNORE to prevent blocking mouse events
     commands.spawn((
@@ -121,7 +127,11 @@ fn setup(mut commands: Commands) {
     ));
 }
 
-fn spawn_box(commands: &mut Commands) {
+fn spawn_box(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+) {
     let half_width = BOX_WIDTH / 2.0;
     let half_height = BOX_HEIGHT / 2.0;
     let half_wall = WALL_THICKNESS / 2.0;
@@ -129,6 +139,8 @@ fn spawn_box(commands: &mut Commands) {
     // Floor
     spawn_static_collider(
         commands,
+        meshes,
+        materials,
         Vec2::new(0.0, -half_height - half_wall),
         Vec2::new(half_width, half_wall),
         Color::srgb(0.3, 0.3, 0.3),
@@ -137,6 +149,8 @@ fn spawn_box(commands: &mut Commands) {
     // Ceiling
     spawn_static_collider(
         commands,
+        meshes,
+        materials,
         Vec2::new(0.0, half_height + half_wall),
         Vec2::new(half_width, half_wall),
         Color::srgb(0.3, 0.3, 0.3),
@@ -145,6 +159,8 @@ fn spawn_box(commands: &mut Commands) {
     // Left wall
     spawn_static_collider(
         commands,
+        meshes,
+        materials,
         Vec2::new(-half_width + half_wall, 0.0),
         Vec2::new(half_wall, half_height),
         Color::srgb(0.3, 0.3, 0.3),
@@ -153,15 +169,23 @@ fn spawn_box(commands: &mut Commands) {
     // Right wall
     spawn_static_collider(
         commands,
+        meshes,
+        materials,
         Vec2::new(half_width - half_wall, 0.0),
         Vec2::new(half_wall, half_height),
         Color::srgb(0.3, 0.3, 0.3),
     );
 }
 
-fn spawn_obstacles(commands: &mut Commands) {
+fn spawn_obstacles(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+) {
     spawn_static_collider(
         commands,
+        meshes,
+        materials,
         Vec2::new(0.0, PLATFORM_Y),
         Vec2::new(PLATFORM_WIDTH / 2.0, PLATFORM_HEIGHT / 2.0),
         Color::srgb(0.4, 0.5, 0.3),
@@ -170,32 +194,48 @@ fn spawn_obstacles(commands: &mut Commands) {
     for i in 0..=5 {
         spawn_ball_static_collider(
             commands,
+            meshes,
+            materials,
             Vec2::new(50.0 + 13.0 * i as f32, -BOX_HEIGHT / 2.0 + 10.0 * i as f32),
             5.0,
             Color::srgb(0.8, 0.2, 0.2),
         );
-    };
+    }
 
     for i in 0..=5 {
         spawn_ball_static_collider(
             commands,
-            Vec2::new(-BOX_WIDTH / 2.0 + WALL_THICKNESS + 150.0 + 20.0 * i as f32, -BOX_HEIGHT / 2.0 + 5.0),
+            meshes,
+            materials,
+            Vec2::new(
+                -BOX_WIDTH / 2.0 + WALL_THICKNESS + 150.0 + 20.0 * i as f32,
+                -BOX_HEIGHT / 2.0 + 5.0,
+            ),
             5.0,
             Color::srgb(0.8, 0.2, 0.2),
         );
-    };
+    }
 
     for i in 0..=5 {
         spawn_ball_static_collider(
             commands,
-            Vec2::new(-BOX_WIDTH / 2.0 + WALL_THICKNESS + 20.0 + 20.0 * i as f32, -BOX_HEIGHT / 2.0),
+            meshes,
+            materials,
+            Vec2::new(
+                -BOX_WIDTH / 2.0 + WALL_THICKNESS + 20.0 + 20.0 * i as f32,
+                -BOX_HEIGHT / 2.0,
+            ),
             5.0,
             Color::srgb(0.8, 0.2, 0.2),
         );
-    };
+    }
 }
 
-fn spawn_slope(commands: &mut Commands) {
+fn spawn_slope(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+) {
     // Create a triangle slope using a convex hull collider
     // Position it on the right side of the box
     let slope_x = 250.0;
@@ -211,63 +251,81 @@ fn spawn_slope(commands: &mut Commands) {
     // Use convex_hull which works well for triangles
     let collider = Collider::convex_hull(&vertices).expect("Failed to create slope collider");
 
+    // Create a triangle mesh that matches the collider
+    let triangle_vertices = [vertices[0], vertices[1], vertices[2]];
+    let mesh = meshes.add(create_triangle_mesh(&triangle_vertices));
+    let material = materials.add(ColorMaterial::from_color(Color::srgb(0.5, 0.4, 0.3)));
+
     commands.spawn((
         Transform::from_translation(Vec3::new(slope_x, slope_y, 0.0)),
         GlobalTransform::default(),
         RigidBody::Fixed,
         collider,
-        Sprite {
-            color: Color::srgb(0.5, 0.4, 0.3),
-            custom_size: Some(Vec2::new(160.0, 100.0)),
-            ..default()
-        },
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
     ));
 }
 
-fn spawn_static_collider(commands: &mut Commands, position: Vec2, half_size: Vec2, color: Color) {
+fn spawn_static_collider(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    position: Vec2,
+    half_size: Vec2,
+    color: Color,
+) {
+    let mesh = meshes.add(create_rectangle_mesh(half_size.x, half_size.y));
+    let material = materials.add(ColorMaterial::from_color(color));
+
     commands.spawn((
         Transform::from_translation(position.extend(0.0)),
         GlobalTransform::default(),
         RigidBody::Fixed,
         Collider::cuboid(half_size.x, half_size.y),
-        Sprite {
-            color,
-            custom_size: Some(half_size * 2.0),
-            ..default()
-        },
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
     ));
 }
 
-fn spawn_ball_static_collider(commands: &mut Commands, position: Vec2, radius: f32, color: Color) {
+fn spawn_ball_static_collider(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    position: Vec2,
+    radius: f32,
+    color: Color,
+) {
+    let mesh = meshes.add(create_circle_mesh(radius, 24));
+    let material = materials.add(ColorMaterial::from_color(color));
+
     commands.spawn((
         Transform::from_translation(position.extend(0.0)),
         GlobalTransform::default(),
         RigidBody::Fixed,
         Collider::ball(radius),
-        Sprite {
-            color,
-            custom_size: Some(Vec2::new(radius * 2.0, radius * 2.0)),
-            ..default()
-        },
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
     ));
 }
 
-fn spawn_player(commands: &mut Commands) {
+fn spawn_player(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+) {
     let spawn_pos = spawn_position();
+
+    // Create capsule mesh matching the collider
+    let mesh = meshes.add(create_capsule_mesh(PLAYER_HALF_HEIGHT, PLAYER_RADIUS, 12));
+    let material = materials.add(ColorMaterial::from_color(Color::srgb(0.2, 0.6, 0.9)));
 
     commands
         .spawn((
             Player,
             Transform::from_translation(spawn_pos.extend(1.0)),
             GlobalTransform::default(),
-            Sprite {
-                color: Color::srgb(0.2, 0.6, 0.9),
-                custom_size: Some(Vec2::new(
-                    PLAYER_RADIUS * 2.0,
-                    (PLAYER_RADIUS + PLAYER_HALF_HEIGHT) * 2.0,
-                )),
-                ..default()
-            },
+            Mesh2d(mesh),
+            MeshMaterial2d(material),
         ))
         .insert((
             // Character controller with gravity
