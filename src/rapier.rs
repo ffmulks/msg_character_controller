@@ -132,11 +132,12 @@ impl CharacterPhysicsBackend for Rapier2dBackend {
             .get::<ReadMassProperties>(entity)
             .expect("Entity must have ReadMassProperties component for mass calculation");
         let mass = props.mass;
-        assert!(
-            mass > 0.0 && mass.is_finite(),
-            "Entity mass must be positive and finite, got: {}",
-            mass
-        );
+        // Return 0.0 if mass is invalid (not yet computed by Rapier).
+        // This can happen on the first frame before Rapier runs in PostFixedUpdate.
+        // Systems will naturally skip force application when mass is 0.
+        if mass <= 0.0 || !mass.is_finite() {
+            return 0.0;
+        }
         mass
     }
 
@@ -145,11 +146,12 @@ impl CharacterPhysicsBackend for Rapier2dBackend {
             .get::<ReadMassProperties>(entity)
             .expect("Entity must have ReadMassProperties component for inertia calculation");
         let inertia = props.principal_inertia;
-        assert!(
-            inertia > 0.0 && inertia.is_finite(),
-            "Entity principal inertia must be positive and finite, got: {}",
-            inertia
-        );
+        // Return 0.0 if inertia is invalid (not yet computed by Rapier).
+        // This can happen on the first frame before Rapier runs in PostFixedUpdate.
+        // Systems will naturally skip torque application when inertia is 0.
+        if inertia <= 0.0 || !inertia.is_finite() {
+            return 0.0;
+        }
         inertia
     }
 
