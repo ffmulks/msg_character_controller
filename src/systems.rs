@@ -752,19 +752,41 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
             // Only the walking impulse is rotated - external velocity and spring system are unaffected
             let walk_impulse = slope_tangent * slope_velocity_delta * mass;
             B::apply_impulse(world, entity, walk_impulse);
-        } else if intent.is_walking() {
+        } else {
             // AIRBORNE: Use world-space horizontal axis
-            // Only apply air control when actively walking - no friction when airborne
             let current_horizontal = current_velocity.dot(right);
 
-            // Calculate velocity change toward target, clamped by max acceleration
-            let velocity_diff = desired_walk_speed - current_horizontal;
-            let max_change = walk_accel * dt;
-            let change = velocity_diff.clamp(-max_change, max_change);
+            if intent.is_walking() {
+                // Apply air control when actively walking
+                // Calculate velocity change toward target, clamped by max acceleration
+                let velocity_diff = desired_walk_speed - current_horizontal;
+                let max_change = walk_accel * dt;
+                let change = velocity_diff.clamp(-max_change, max_change);
 
-            // Apply impulse along right axis: I = m * dv
-            let walk_impulse = right * change * mass;
-            B::apply_impulse(world, entity, walk_impulse);
+                // Only disable air friction when walking forward (same direction as current velocity)
+                let walking_forward = current_horizontal.abs() <= 0.001
+                    || effective_walk.signum() == current_horizontal.signum();
+                let friction_factor = if walking_forward {
+                    1.0
+                } else {
+                    1.0 - config.air_friction
+                };
+                let new_horizontal = (current_horizontal + change) * friction_factor;
+                let horizontal_delta = new_horizontal - current_horizontal;
+
+                // Apply impulse along right axis: I = m * dv
+                let walk_impulse = right * horizontal_delta * mass;
+                B::apply_impulse(world, entity, walk_impulse);
+            } else if config.air_friction > 0.0 && current_horizontal.abs() > 0.001 {
+                // Not walking - apply air friction to slow down horizontal movement
+                let friction_factor = 1.0 - config.air_friction;
+                let new_horizontal = current_horizontal * friction_factor;
+                let horizontal_delta = new_horizontal - current_horizontal;
+
+                // Apply impulse along right axis: I = m * dv
+                let friction_impulse = right * horizontal_delta * mass;
+                B::apply_impulse(world, entity, friction_impulse);
+            }
         }
     }
 }
@@ -867,11 +889,15 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
             let max_change = fly_accel * dt;
             let change = velocity_diff.clamp(-max_change, max_change);
 
-            // Apply friction when grounded and not actively flying horizontally
-            let friction_factor = if is_grounded && !intent.is_flying_horizontal() {
+            // Only disable friction when flying forward (same direction as current velocity)
+            let flying_forward = current_horizontal.abs() <= 0.001
+                || intent.effective_fly_horizontal().signum() == current_horizontal.signum();
+            let friction_factor = if flying_forward {
+                1.0
+            } else if is_grounded {
                 1.0 - config.friction
             } else {
-                1.0
+                1.0 - config.air_friction
             };
 
             let new_horizontal = (current_horizontal + change) * friction_factor;

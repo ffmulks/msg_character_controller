@@ -729,6 +729,10 @@ pub struct ControllerConfig {
     /// Air control multiplier (0.0-1.0).
     pub air_control: f32,
 
+    /// Air friction/deceleration when airborne and no input (0.0-1.0).
+    /// Similar to ground friction but applied when in the air.
+    pub air_friction: f32,
+
     // === Flying Settings ===
     /// Maximum flying speed (units/second).
     /// This is the speed used for flying propulsion in all directions.
@@ -908,6 +912,7 @@ impl Default for ControllerConfig {
             acceleration: 400.0,
             friction: 0.06,
             air_control: 0.15,
+            air_friction: 0.02, // Lower than ground friction for floatier air movement
             // Flying settings
             fly_max_speed: 150.0,                 // Same as max_speed by default
             fly_vertical_speed_ratio: 0.6,        // Same speed vertical and horizontal
@@ -1032,6 +1037,24 @@ impl ControllerConfig {
     /// Builder: set max speed.
     pub fn with_max_speed(mut self, max_speed: f32) -> Self {
         self.max_speed = max_speed;
+        self
+    }
+
+    /// Builder: set friction.
+    pub fn with_friction(mut self, friction: f32) -> Self {
+        self.friction = friction;
+        self
+    }
+
+    /// Builder: set air friction.
+    pub fn with_air_friction(mut self, air_friction: f32) -> Self {
+        self.air_friction = air_friction;
+        self
+    }
+
+    /// Builder: set air control.
+    pub fn with_air_control(mut self, air_control: f32) -> Self {
+        self.air_control = air_control;
         self
     }
 
