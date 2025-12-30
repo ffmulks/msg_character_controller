@@ -708,6 +708,11 @@ pub struct ControllerConfig {
     /// intent overrides the dampening to allow intentional descent.
     pub wall_clinging_dampening: f32,
 
+    /// Whether wall clinging dampening should also dampen upward movement.
+    /// When false (default), only downward motion along the wall is dampened.
+    /// When true, upward motion is also dampened, creating a stickier wall cling.
+    pub wall_clinging_dampen_upward: bool,
+
     // === Slope Settings ===
     /// Maximum slope angle the character can walk up (radians).
     pub max_slope_angle: f32,
@@ -839,6 +844,7 @@ impl Default for ControllerConfig {
             air_control: 0.3,
             wall_clinging: true, // Allow wall clinging by default
             wall_clinging_dampening: 0.5, // Moderate wall dampening by default
+            wall_clinging_dampen_upward: false, // Only dampen downward motion by default
 
             // Slope settings
             max_slope_angle: std::f32::consts::FRAC_PI_3, // 60 degrees

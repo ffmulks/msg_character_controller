@@ -583,18 +583,25 @@ pub fn apply_wall_clinging_dampening<B: CharacterPhysicsBackend>(world: &mut Wor
         // Get velocity component along the wall-down direction
         let down_velocity = velocity.dot(wall_down);
 
-        // Only apply dampening if moving downward along the wall
+        // Calculate dampening factor
+        let dampening_factor = config.wall_clinging_dampening;
+
+        // Apply dampening based on movement direction along wall
         if down_velocity > 0.0 {
-            // Calculate the impulse to counteract the downward motion
+            // Moving downward along wall - always dampen
             // dampening of 1.0 = fully counteract, 0.0 = no effect
             // We apply a portion of the counteracting impulse each frame
             // to create smooth dampening rather than instant stop
-            let dampening_factor = config.wall_clinging_dampening;
-
-            // Apply as velocity reduction per frame (smooth dampening)
-            // Impulse = mass * delta_velocity
             let velocity_reduction = down_velocity * dampening_factor;
             let dampening_impulse = -wall_down * velocity_reduction * mass;
+
+            B::apply_impulse(world, entity, dampening_impulse);
+        } else if down_velocity < 0.0 && config.wall_clinging_dampen_upward {
+            // Moving upward along wall - only dampen if enabled
+            // This creates a stickier wall cling effect
+            let up_velocity = -down_velocity; // Make positive for calculation
+            let velocity_reduction = up_velocity * dampening_factor;
+            let dampening_impulse = wall_down * velocity_reduction * mass;
 
             B::apply_impulse(world, entity, dampening_impulse);
         }

@@ -174,6 +174,7 @@ pub fn movement_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                         .range(0.0..=1.0),
                 );
             });
+            ui.checkbox(&mut config.wall_clinging_dampen_upward, "Dampen Upward");
         });
     });
 }
