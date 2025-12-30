@@ -602,7 +602,7 @@ impl Default for ControllerConfig {
             cling_strength: 0.5,
 
             // Spring settings
-            spring_strength: 300.0,
+            spring_strength: 800.0,
             spring_damping: 5.0,
             spring_max_force: None,
             spring_max_velocity: None,

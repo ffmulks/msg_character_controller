@@ -119,7 +119,7 @@ pub fn ground_detection_ui(
 
         ui.horizontal(|ui| {
             ui.label("Time Since Grounded:");
-            ui.label(format!("{:.3}s", controller.time_since_grounded));
+            ui.label(format!("{:.3}s", controller.coyote_timer.duration().as_secs_f32()));
         });
     });
 }
@@ -255,8 +255,8 @@ pub fn movement_intent_ui(ui: &mut egui::Ui, movement: Option<&MovementIntent>) 
             });
             if let Some(ref jump) = intent.jump_request {
                 ui.horizontal(|ui| {
-                    ui.label("Request Time:");
-                    ui.label(format!("{:.3}s", jump.request_time));
+                    ui.label("Buffer Timer:");
+                    ui.label(format!("{:.3}s", jump.buffer_timer.elapsed_secs()));
                 });
             }
         } else {
