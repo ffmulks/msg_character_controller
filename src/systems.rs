@@ -989,29 +989,45 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
             }
             JumpType::LeftWall => {
                 // Wall jump from left wall: jump up-right (away from wall)
-                // Rotate ideal_up by wall_jump_angle clockwise (toward right)
                 let up = controller.ideal_up();
-                let angle = -config.wall_jump_angle; // Negative to rotate clockwise
-                let cos_a = angle.cos();
-                let sin_a = angle.sin();
-                Vec2::new(
-                    up.x * cos_a - up.y * sin_a,
-                    up.x * sin_a + up.y * cos_a,
-                )
-                .normalize()
+                if config.wall_jump_retain_height {
+                    // Retain height mode: same vertical as ground jump, add horizontal for angle
+                    // The horizontal component is added "for free" on top of the full upward impulse
+                    let horizontal = config.wall_jump_angle.tan();
+                    let right = Vec2::new(up.y, -up.x); // 90° clockwise from up
+                    up + right * horizontal
+                } else {
+                    // Classic rotation mode: rotate ideal_up by wall_jump_angle clockwise
+                    let angle = -config.wall_jump_angle; // Negative to rotate clockwise
+                    let cos_a = angle.cos();
+                    let sin_a = angle.sin();
+                    Vec2::new(
+                        up.x * cos_a - up.y * sin_a,
+                        up.x * sin_a + up.y * cos_a,
+                    )
+                    .normalize()
+                }
             }
             JumpType::RightWall => {
                 // Wall jump from right wall: jump up-left (away from wall)
-                // Rotate ideal_up by wall_jump_angle counter-clockwise (toward left)
                 let up = controller.ideal_up();
-                let angle = config.wall_jump_angle; // Positive to rotate counter-clockwise
-                let cos_a = angle.cos();
-                let sin_a = angle.sin();
-                Vec2::new(
-                    up.x * cos_a - up.y * sin_a,
-                    up.x * sin_a + up.y * cos_a,
-                )
-                .normalize()
+                if config.wall_jump_retain_height {
+                    // Retain height mode: same vertical as ground jump, add horizontal for angle
+                    // The horizontal component is added "for free" on top of the full upward impulse
+                    let horizontal = config.wall_jump_angle.tan();
+                    let right = Vec2::new(up.y, -up.x); // 90° clockwise from up
+                    up - right * horizontal // Subtract right = add left
+                } else {
+                    // Classic rotation mode: rotate ideal_up by wall_jump_angle counter-clockwise
+                    let angle = config.wall_jump_angle; // Positive to rotate counter-clockwise
+                    let cos_a = angle.cos();
+                    let sin_a = angle.sin();
+                    Vec2::new(
+                        up.x * cos_a - up.y * sin_a,
+                        up.x * sin_a + up.y * cos_a,
+                    )
+                    .normalize()
+                }
             }
         };
 

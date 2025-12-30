@@ -352,6 +352,9 @@ pub fn wall_jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                 );
             });
             ui.label("(0 = none, 1 = full downward velocity cancel)");
+
+            ui.checkbox(&mut config.wall_jump_retain_height, "Retain Height");
+            ui.label("(same jump height as ground, horizontal added free)");
         });
     });
 }

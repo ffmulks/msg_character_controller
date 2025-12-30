@@ -743,6 +743,12 @@ pub struct ControllerConfig {
     /// 1.0 = full compensation (wall jump cancels all downward velocity first)
     pub wall_jump_velocity_compensation: f32,
 
+    /// Whether wall jumps should retain the same upward height as normal jumps.
+    /// When true: wall jumps have the same vertical component as ground jumps,
+    /// with horizontal velocity added on top to achieve the wall_jump_angle.
+    /// When false: the jump vector is rotated, reducing vertical component.
+    pub wall_jump_retain_height: bool,
+
     /// Duration (seconds) after jumping during which the jump can be cancelled.
     /// If the player releases the jump button within this window OR crosses the
     /// zenith (starts moving downward), fall gravity will be triggered.
@@ -824,6 +830,7 @@ impl Default for ControllerConfig {
             wall_jump_angle: std::f32::consts::FRAC_PI_4, // 45 degrees
             wall_jump_movement_block_duration: 0.15, // 150ms
             wall_jump_velocity_compensation: 0.5, // 50% downward velocity compensation
+            wall_jump_retain_height: false, // Classic rotation-based wall jump by default
 
             // Upright torque settings
             upright_torque_enabled: true,
@@ -1015,6 +1022,14 @@ impl ControllerConfig {
     /// Controls how much downward velocity is cancelled before a wall jump.
     pub fn with_wall_jump_velocity_compensation(mut self, compensation: f32) -> Self {
         self.wall_jump_velocity_compensation = compensation.clamp(0.0, 1.0);
+        self
+    }
+
+    /// Builder: set whether wall jumps retain the same height as normal jumps.
+    /// When true, the vertical component matches a ground jump with horizontal added on top.
+    /// When false, the jump vector is rotated (classic behavior).
+    pub fn with_wall_jump_retain_height(mut self, retain: bool) -> Self {
+        self.wall_jump_retain_height = retain;
         self
     }
 
