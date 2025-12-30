@@ -333,6 +333,15 @@ pub fn wall_jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                 }
             });
             ui.label("(blocks movement toward wall after jump)");
+
+            ui.horizontal(|ui| {
+                ui.label("Velocity Compensation:");
+                ui.add(
+                    egui::Slider::new(&mut config.wall_jump_velocity_compensation, 0.0..=1.0)
+                        .fixed_decimals(2),
+                );
+            });
+            ui.label("(0 = none, 1 = full downward velocity cancel)");
         });
     });
 }

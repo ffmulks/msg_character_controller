@@ -730,6 +730,11 @@ pub struct ControllerConfig {
     /// Default is 0.15 seconds (150ms).
     pub wall_jump_movement_block_duration: f32,
 
+    /// How much downward velocity should be compensated on wall jumps (0.0-1.0).
+    /// 0.0 = no compensation (wall jump adds to existing velocity)
+    /// 1.0 = full compensation (wall jump cancels all downward velocity first)
+    pub wall_jump_velocity_compensation: f32,
+
     /// Duration (seconds) after jumping during which the jump can be cancelled.
     /// If the player releases the jump button within this window OR crosses the
     /// zenith (starts moving downward), fall gravity will be triggered.
@@ -809,6 +814,7 @@ impl Default for ControllerConfig {
             wall_jumping: false,
             wall_jump_angle: std::f32::consts::FRAC_PI_4, // 45 degrees
             wall_jump_movement_block_duration: 0.15, // 150ms
+            wall_jump_velocity_compensation: 0.5, // 50% downward velocity compensation
 
             // Upright torque settings
             upright_torque_enabled: true,
@@ -993,6 +999,13 @@ impl ControllerConfig {
     /// Duration (seconds) after a wall jump during which movement toward the wall is blocked.
     pub fn with_wall_jump_movement_block_duration(mut self, duration: f32) -> Self {
         self.wall_jump_movement_block_duration = duration;
+        self
+    }
+
+    /// Builder: set wall jump velocity compensation (0.0-1.0).
+    /// Controls how much downward velocity is cancelled before a wall jump.
+    pub fn with_wall_jump_velocity_compensation(mut self, compensation: f32) -> Self {
+        self.wall_jump_velocity_compensation = compensation.clamp(0.0, 1.0);
         self
     }
 

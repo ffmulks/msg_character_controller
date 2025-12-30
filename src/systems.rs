@@ -916,10 +916,34 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
             }
         };
 
+        // Compensate for downward velocity before applying jump impulse
+        // This helps the character jump with consistent height regardless of falling speed
+        let mass = B::get_mass(world, entity);
+        let velocity = B::get_velocity(world, entity);
+        let ideal_up = controller.ideal_up();
+        let vertical_velocity = velocity.dot(ideal_up);
+
+        // Only compensate if moving downward (negative vertical velocity)
+        if vertical_velocity < 0.0 {
+            // Ground jumps: fully compensate (cancel all downward velocity)
+            // Wall jumps: compensate based on config (0.0 = none, 1.0 = full)
+            let compensation = match controller.last_jump_type {
+                JumpType::Ground => 1.0,
+                JumpType::LeftWall | JumpType::RightWall => {
+                    config.wall_jump_velocity_compensation
+                }
+            };
+
+            if compensation > 0.0 {
+                // Apply impulse to cancel downward velocity (impulse = mass * delta_v)
+                let compensation_impulse = ideal_up * (-vertical_velocity * compensation * mass);
+                B::apply_impulse(world, entity, compensation_impulse);
+            }
+        }
+
         // Apply jump impulse
         // jump_speed is the desired velocity change. Impulse = mass * delta_v
         // Scale by actual mass so velocity change equals jump_speed regardless of body mass.
-        let mass = B::get_mass(world, entity);
         let impulse = jump_direction * config.jump_speed * mass;
         B::apply_impulse(world, entity, impulse);
 
