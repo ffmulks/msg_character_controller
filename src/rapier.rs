@@ -315,8 +315,8 @@ use crate::intent::MovementIntent;
 
 /// Rapier-specific ground detection system using shapecast.
 ///
-/// Floor raycast covers: riding_height + ground_tolerance
-/// (which is float_height + capsule_half_height + ground_tolerance)
+/// Floor raycast covers: riding_height + grounding_distance
+/// (which is float_height + capsule_half_height + grounding_distance)
 ///
 /// **Important**: Raycasts use the "ideal up" direction derived from gravity,
 /// NOT from the actor's Transform rotation. This ensures ground detection
@@ -364,10 +364,10 @@ fn rapier_ground_detection(
         let collision_groups_tuple = collision_groups.map(|cg| (cg.memberships, cg.filters));
 
         // Calculate ground cast length:
-        // riding_height + ground_tolerance = float_height + capsule_half_height + ground_tolerance
+        // riding_height + grounding_distance = float_height + capsule_half_height + grounding_distance
         // Add a small buffer (1.0) to avoid edge cases with floating point precision
         let riding_height = controller.riding_height(config);
-        let ground_cast_length = riding_height + config.ground_tolerance + 1.0;
+        let ground_cast_length = riding_height + config.grounding_distance + 1.0;
 
         // Compute rotation angle for the shape to align with ideal up direction (from gravity).
         // This ensures the shapecast shape is oriented correctly in world space.
@@ -556,7 +556,7 @@ fn get_collider_radius(collider: &Collider) -> f32 {
 
 /// Rapier-specific wall detection system using shapecast.
 ///
-/// Wall cast length: grounding_distance + radius
+/// Wall cast length: surface_detection_distance + radius
 ///
 /// **Important**: Raycasts use the "ideal up" direction derived from gravity,
 /// NOT from the actor's Transform rotation. This ensures wall detection
@@ -592,9 +592,9 @@ fn rapier_wall_detection(
         // Compute rotation angle for the shape based on ideal up direction from gravity
         let shape_rotation = controller.ideal_up_angle();
 
-        // Wall cast length: grounding_distance + radius + small buffer for precision
+        // Wall cast length: surface_detection_distance + radius + small buffer for precision
         let radius = collider.map(get_collider_radius).unwrap_or(0.0);
-        let wall_cast_length = config.grounding_distance + radius + 1.0;
+        let wall_cast_length = config.surface_detection_distance + radius + 1.0;
 
         // Shapecast left
         if let Some(left_hit) = rapier_shapecast(
@@ -630,7 +630,7 @@ fn rapier_wall_detection(
 
 /// Rapier-specific ceiling detection system using shapecast.
 ///
-/// Ceiling cast length: grounding_distance + capsule_half_height
+/// Ceiling cast length: surface_detection_distance + capsule_half_height
 ///
 /// **Important**: Raycasts use the "ideal up" direction derived from gravity,
 /// NOT from the actor's Transform rotation. This ensures ceiling detection
@@ -664,8 +664,8 @@ fn rapier_ceiling_detection(
         // Shape rotation based on ideal up direction from gravity
         let shape_rotation = controller.ideal_up_angle() - std::f32::consts::FRAC_PI_2;
 
-        // Ceiling cast length: grounding_distance + capsule_half_height + small buffer for precision
-        let ceiling_cast_length = config.grounding_distance + controller.capsule_half_height() + 1.0;
+        // Ceiling cast length: surface_detection_distance + capsule_half_height + small buffer for precision
+        let ceiling_cast_length = config.surface_detection_distance + controller.capsule_half_height() + 1.0;
 
         // Shapecast upward
         if let Some(ceiling_hit) = rapier_shapecast(

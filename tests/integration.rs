@@ -173,13 +173,13 @@ mod ground_detection {
         let cfg = app.world().get::<ControllerConfig>(character).unwrap();
 
         println!(
-            "PROOF: is_grounded={}, ground_distance={}, riding_height+tolerance={}",
+            "PROOF: is_grounded={}, ground_distance={}, riding_height+grounding_distance={}",
             controller.is_grounded(cfg),
             controller.ground_distance(),
-            controller.riding_height(cfg) + cfg.ground_tolerance
+            controller.riding_height(cfg) + cfg.grounding_distance
         );
 
-        // PROOF: is_grounded should be true when within riding_height + ground_tolerance
+        // PROOF: is_grounded should be true when within riding_height + grounding_distance
         assert!(
             controller.is_grounded(cfg),
             "Character should be grounded at float_height"

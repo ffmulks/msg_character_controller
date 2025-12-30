@@ -308,11 +308,11 @@ impl CharacterController {
         self.stair_config.as_ref().is_some_and(|c| c.enabled)
     }
 
-    /// Check if grounded (floor detected within float_height + ground_tolerance).
+    /// Check if grounded (floor detected within riding_height + grounding_distance).
     pub fn is_grounded(&self, config: &ControllerConfig) -> bool {
         if let Some(ref floor) = self.floor {
             let riding_height = self.riding_height(config);
-            floor.distance <= riding_height + config.ground_tolerance
+            floor.distance <= riding_height + config.grounding_distance
         } else {
             false
         }
@@ -425,12 +425,12 @@ impl CharacterController {
 
     /// Check if within spring active range.
     /// Active when:
-    /// - Distance <= float_height + ground_tolerance (riding range)
+    /// - Distance <= riding_height + grounding_distance
     /// - Distance > capsule_half_height - EPSILON (physics collision threshold)
     pub fn in_spring_range(&self, config: &ControllerConfig) -> bool {
         if let Some(ref floor) = self.floor {
             let riding_height = self.riding_height(config);
-            let max_range = riding_height + config.ground_tolerance;
+            let max_range = riding_height + config.grounding_distance;
             let min_range = self.collider_bottom_offset - f32::EPSILON;
             floor.distance <= max_range && floor.distance > min_range
         } else {
@@ -619,14 +619,15 @@ pub struct ControllerConfig {
     /// 1 pixel above the ground.
     pub float_height: f32,
 
-    /// Tolerance below float_height where the spring is still active.
-    /// The spring will restore riding_height when within this range.
-    /// Total grounded range is: riding_height + ground_tolerance.
-    pub ground_tolerance: f32,
+    /// Distance beyond riding_height where the character is still considered grounded.
+    /// The spring remains active within this range, restoring the character to riding_height.
+    /// Also used as the buffer zone above riding_height where grounding_strength applies.
+    /// Total grounded range is: riding_height + grounding_distance.
+    pub grounding_distance: f32,
 
     /// Distance for wall and ceiling detection (extends from collider surface).
-    /// Also used as a buffer zone above riding_height where grounding_strength applies.
-    pub grounding_distance: f32,
+    /// Separate from grounding_distance to allow independent tuning.
+    pub surface_detection_distance: f32,
 
     /// Multiplier for downward spring force when character is within grounding_distance
     /// above the riding_height. This helps keep the character grounded when slightly floating.
@@ -775,10 +776,10 @@ impl Default for ControllerConfig {
     fn default() -> Self {
         Self {
             // Float settings
-            float_height: 1.0,     // 1 pixel gap between collider bottom and ground
-            ground_tolerance: 2.0, // tolerance for spring activation
-            grounding_distance: 2.0, // distance for wall/ceiling detection and grounding buffer
-            grounding_strength: 1.0, // multiplier for downward spring force (1.0 = no extra force)
+            float_height: 1.0,               // 1 pixel gap between collider bottom and ground
+            grounding_distance: 2.0,         // tolerance for spring activation and grounding buffer
+            surface_detection_distance: 2.0, // distance for wall/ceiling detection
+            grounding_strength: 1.0,         // multiplier for downward spring force (1.0 = no extra force)
 
             // Spring settings
             spring_strength: 300.0,
@@ -1014,12 +1015,6 @@ impl ControllerConfig {
         self
     }
 
-    /// Builder: set ground tolerance.
-    pub fn with_ground_tolerance(mut self, tolerance: f32) -> Self {
-        self.ground_tolerance = tolerance;
-        self
-    }
-
     /// Builder: set grounding distance.
     pub fn with_grounding_distance(mut self, distance: f32) -> Self {
         self.grounding_distance = distance;
@@ -1169,18 +1164,18 @@ mod tests {
         controller.floor = Some(CollisionData::new(riding_height, Vec2::Y, Vec2::ZERO, None));
         assert!(controller.is_grounded(&config));
 
-        // Floor detected at edge of tolerance
+        // Floor detected at edge of grounding distance
         controller.floor = Some(CollisionData::new(
-            riding_height + config.ground_tolerance,
+            riding_height + config.grounding_distance,
             Vec2::Y,
             Vec2::ZERO,
             None,
         ));
         assert!(controller.is_grounded(&config));
 
-        // Floor detected beyond tolerance
+        // Floor detected beyond grounding distance
         controller.floor = Some(CollisionData::new(
-            riding_height + config.ground_tolerance + 1.0,
+            riding_height + config.grounding_distance + 1.0,
             Vec2::Y,
             Vec2::ZERO,
             None,

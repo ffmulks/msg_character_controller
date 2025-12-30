@@ -242,7 +242,7 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
 
         // Only apply spring within active range, unless filtering
         // During filtering, we still process the spring but filter downward forces
-        let max_range = target_height + config.ground_tolerance;
+        let max_range = target_height + config.grounding_distance;
 
         if current_height > max_range && !should_filter_downward {
             // Above max range and not filtering - skip spring entirely
@@ -296,7 +296,7 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
                 // Fallback: maximum based on counteracting gravity force plus reasonable acceleration.
                 // F = m * g, so max force = m * g * 3 + spring contribution
                 gravity_magnitude * mass * 3.0
-                    + config.spring_strength * config.ground_tolerance * mass
+                    + config.spring_strength * config.grounding_distance * mass
             });
         let clamped_spring_force = spring_force.clamp(-max_spring_force, max_spring_force);
 
@@ -363,7 +363,7 @@ pub fn accumulate_stair_climb_force<B: CharacterPhysicsBackend>(world: &mut Worl
                 .map(|f| f * mass)
                 .unwrap_or_else(|| {
                     gravity_magnitude * mass * 3.0
-                        + config.spring_strength * config.ground_tolerance * mass
+                        + config.spring_strength * config.grounding_distance * mass
                 });
 
             let climb_force = up * max_spring_force * stair_config.climb_force_multiplier;
