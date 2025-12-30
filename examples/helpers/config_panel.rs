@@ -179,6 +179,37 @@ pub fn movement_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
     });
 }
 
+/// Renders the flying settings collapsible section.
+pub fn flying_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
+    ui.collapsing("Flying Settings", |ui| {
+        ui.horizontal(|ui| {
+            ui.label("Max Speed:");
+            ui.add(
+                egui::DragValue::new(&mut config.fly_max_speed)
+                    .speed(1.0)
+                    .range(0.0..=100000.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Vertical Speed Ratio:");
+            ui.add(
+                egui::Slider::new(&mut config.fly_vertical_speed_ratio, 0.0..=2.0)
+                    .fixed_decimals(2),
+            );
+        });
+        ui.label("(1.0 = same as horizontal, 0.5 = vertical is half speed)");
+
+        ui.horizontal(|ui| {
+            ui.label("Gravity Compensation:");
+            ui.add(
+                egui::Slider::new(&mut config.fly_gravity_compensation, 0.0..=2.0)
+                    .fixed_decimals(2),
+            );
+        });
+        ui.label("(0 = no compensation, 1 = full, >1 = extra boost)");
+    });
+}
+
 /// Renders the slope settings collapsible section.
 pub fn slope_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
     ui.collapsing("Slope Settings", |ui| {
@@ -296,6 +327,24 @@ pub fn jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                     .range(0.0..=100.0),
             );
         });
+
+        // Fall gravity duration (displayed in ms for user-friendliness)
+        let mut fall_gravity_ms = config.fall_gravity_duration * 1000.0;
+        ui.horizontal(|ui| {
+            ui.label("Fall Gravity Duration (ms):");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut fall_gravity_ms)
+                        .speed(10.0)
+                        .range(0.0..=1000.0),
+                )
+                .changed()
+            {
+                config.fall_gravity_duration = fall_gravity_ms / 1000.0;
+            }
+        });
+        ui.label("(how long extra gravity is applied)");
+
         ui.horizontal(|ui| {
             ui.label("Spring Filter Duration:");
             ui.add(
@@ -557,6 +606,7 @@ pub fn config_panel_ui(
         float_settings_ui(ui, config);
         spring_settings_ui(ui, config);
         movement_settings_ui(ui, config);
+        flying_settings_ui(ui, config);
         slope_settings_ui(ui, config);
         sensor_settings_ui(ui, config);
         jump_settings_ui(ui, config);

@@ -729,6 +729,23 @@ pub struct ControllerConfig {
     /// Air control multiplier (0.0-1.0).
     pub air_control: f32,
 
+    // === Flying Settings ===
+    /// Maximum flying speed (units/second).
+    /// This is the speed used for flying propulsion in all directions.
+    /// Defaults to same as max_speed.
+    pub fly_max_speed: f32,
+
+    /// Ratio of vertical flying speed relative to horizontal.
+    /// 1.0 = same speed, 0.5 = vertical is half horizontal speed.
+    /// Applies to both upward and downward propulsion.
+    pub fly_vertical_speed_ratio: f32,
+
+    /// Gravity compensation ratio when flying upward (0.0-1.0+).
+    /// 0.0 = no compensation, flying must overcome gravity manually.
+    /// 1.0 = full compensation, flying upward automatically counters gravity.
+    /// Values > 1.0 provide extra boost beyond gravity compensation.
+    pub fly_gravity_compensation: f32,
+
     /// Whether the character can cling to walls by walking into them.
     /// When true (default), walking into a wall applies movement impulse normally.
     /// When false, movement intent toward a detected wall is rejected.
@@ -864,7 +881,7 @@ impl Default for ControllerConfig {
     fn default() -> Self {
         Self {
             // Float settings
-            float_height: 6.0,               // 6 pixel gap between collider bottom and ground
+            float_height: 6.0,               // gap between collider bottom and ground
             grounding_distance: 4.0,         // tolerance for spring activation and grounding buffer
             surface_detection_distance: 2.0, // distance for wall/ceiling detection
             grounding_strength: 3.0,         // multiplier for downward spring force
@@ -874,19 +891,23 @@ impl Default for ControllerConfig {
             spring_damping: 13.0,
             spring_max_force: None,
             spring_max_velocity: None,
-            jump_spring_filter_duration: 0.15, // 150ms
+            jump_spring_filter_duration: 0.15, // duration to suppress spring after jumping
 
             // Movement settings
             max_speed: 150.0,
             acceleration: 800.0,
             friction: 0.1,
             air_control: 0.15,
+            // Flying settings
+            fly_max_speed: 150.0,              // Same as max_speed by default
+            fly_vertical_speed_ratio: 1.0,     // Same speed vertical and horizontal
+            fly_gravity_compensation: 1.0,     // Full gravity compensation by default
             wall_clinging: true, // Allow wall clinging by default
             wall_clinging_dampening: 0.5, // Moderate wall dampening by default
             wall_clinging_dampen_upward: false, // Only dampen downward motion by default
 
             // Slope settings
-            max_slope_angle: std::f32::consts::FRAC_PI_3, // 60 degrees
+            max_slope_angle: std::f32::consts::FRAC_PI_3, // pi/3 radians
             uphill_gravity_multiplier: 1.0,
 
             // Sensor settings (derived from float_height)
@@ -901,17 +922,17 @@ impl Default for ControllerConfig {
             jump_speed: 75.0,
             coyote_time: 0.15,
             jump_buffer_time: 0.1,
-            fall_gravity: 6.0,             // 6x gravity when jump is cancelled
-            jump_cancel_window: 2.0,       // time to cancel jump
-            fall_gravity_duration: 0.3,    // fall gravity time
-            recently_jumped_duration: 0.15, // protection after jump
-            jump_max_ascent_duration: 0.45, // max ascent before forced fall gravity
+            fall_gravity: 6.0,             // gravity multiplier when jump is cancelled
+            jump_cancel_window: 2.0,       // time window to cancel jump
+            fall_gravity_duration: 0.15,    // how long fall gravity is applied
+            recently_jumped_duration: 0.15, // protection window after jump
+            jump_max_ascent_duration: 0.6, // max ascent time before forced fall gravity
 
             // Wall jump settings
             wall_jumping: true,
-            wall_jump_angle: std::f32::consts::FRAC_PI_4, // 45 degrees
-            wall_jump_movement_block_duration: 0.15, // 150ms
-            wall_jump_velocity_compensation: 0.5, // 50% downward velocity compensation
+            wall_jump_angle: std::f32::consts::FRAC_PI_4, // pi/4 radians
+            wall_jump_movement_block_duration: 0.15, // blocks wall-ward movement after wall jump
+            wall_jump_velocity_compensation: 0.5, // fraction of downward velocity to compensate
             wall_jump_retain_height: true, // Same height as ground jump with horizontal added
 
             // Upright torque settings
@@ -999,6 +1020,26 @@ impl ControllerConfig {
     /// Builder: set max speed.
     pub fn with_max_speed(mut self, max_speed: f32) -> Self {
         self.max_speed = max_speed;
+        self
+    }
+
+    /// Builder: set flying max speed.
+    pub fn with_fly_max_speed(mut self, speed: f32) -> Self {
+        self.fly_max_speed = speed;
+        self
+    }
+
+    /// Builder: set flying vertical speed ratio.
+    /// 1.0 = same speed, 0.5 = vertical is half horizontal speed.
+    pub fn with_fly_vertical_speed_ratio(mut self, ratio: f32) -> Self {
+        self.fly_vertical_speed_ratio = ratio;
+        self
+    }
+
+    /// Builder: set flying gravity compensation.
+    /// 0.0 = no compensation, 1.0 = full compensation.
+    pub fn with_fly_gravity_compensation(mut self, compensation: f32) -> Self {
+        self.fly_gravity_compensation = compensation;
         self
     }
 
