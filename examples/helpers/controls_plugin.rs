@@ -4,10 +4,11 @@
 //! in character controller examples.
 //!
 //! ## Controls
-//! - **A/D** or **Left/Right**: Move horizontally
-//! - **W/Up**: Jump
-//! - **Space** (hold): Propulsion (fly upward)
-//! - **S/Down** (hold): Propulsion (fly downward)
+//! - **A/D**: Walk horizontally (with ground friction)
+//! - **W**: Jump
+//! - **Arrow Keys**: Flying propulsion in all directions (up/down/left/right)
+//!   - Uses separate flying configuration (fly_max_speed, vertical ratio, etc.)
+//!   - Horizontal flying uses full speed regardless of grounded state
 
 use bevy::prelude::*;
 use bevy_egui::input::EguiWantsInput;
@@ -96,6 +97,14 @@ impl Plugin for ControlsPlugin {
 /// button state - the system automatically detects rising edges and creates
 /// jump requests with the configured buffer time.
 ///
+/// Controls:
+/// - **A/D**: Walk horizontally (uses ground friction when grounded)
+/// - **W**: Jump (press to jump, hold for higher jumps)
+/// - **Arrow Keys**: Flying propulsion (up/down/left/right)
+///   - Uses fly_max_speed and fly_vertical_speed_ratio configs
+///   - Horizontal flying uses full speed (no air control reduction)
+///   - When grounded, horizontal flying uses walking friction
+///
 /// Input is disabled when egui wants keyboard focus (e.g., when typing in a text field).
 fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -113,31 +122,40 @@ fn handle_input(
     }
 
     for mut movement in &mut query {
-        // Horizontal input (A/D or Left/Right)
-        let mut horizontal = 0.0;
-        if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
-            horizontal -= 1.0;
+        // Walking input (A/D only)
+        let mut walk = 0.0;
+        if keyboard.pressed(KeyCode::KeyA) {
+            walk -= 1.0;
         }
-        if keyboard.pressed(KeyCode::KeyD) || keyboard.pressed(KeyCode::ArrowRight) {
-            horizontal += 1.0;
+        if keyboard.pressed(KeyCode::KeyD) {
+            walk += 1.0;
         }
+        movement.set_walk(walk);
 
-        movement.set_walk(horizontal);
-
-        // Vertical propulsion (Space = up, S/Down = down)
-        let mut vertical = 0.0;
-        if keyboard.pressed(KeyCode::Space) {
-            vertical += 1.0;
+        // Flying propulsion - Arrow keys for all directions
+        // Vertical propulsion (Arrow Up/Down)
+        let mut fly_vertical = 0.0;
+        if keyboard.pressed(KeyCode::ArrowUp) {
+            fly_vertical += 1.0;
         }
-        if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
-            vertical -= 1.0;
+        if keyboard.pressed(KeyCode::ArrowDown) {
+            fly_vertical -= 1.0;
         }
-        movement.set_fly(vertical);
+        movement.set_fly(fly_vertical);
 
-        // Jump on W or Up - pass the current button state as a bool
+        // Horizontal flying propulsion (Arrow Left/Right)
+        let mut fly_horizontal = 0.0;
+        if keyboard.pressed(KeyCode::ArrowLeft) {
+            fly_horizontal -= 1.0;
+        }
+        if keyboard.pressed(KeyCode::ArrowRight) {
+            fly_horizontal += 1.0;
+        }
+        movement.set_fly_horizontal(fly_horizontal);
+
+        // Jump on W only - pass the current button state as a bool
         // The controller handles edge detection, buffering, and all jump logic
-        let wants_to_jump =
-            keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp);
+        let wants_to_jump = keyboard.pressed(KeyCode::KeyW);
         movement.set_jump_pressed(wants_to_jump);
     }
 }

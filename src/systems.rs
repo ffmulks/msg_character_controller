@@ -760,12 +760,19 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
     }
 }
 
-/// Apply vertical propulsion (flying) based on intent.
+/// Apply flying propulsion (vertical and horizontal) based on intent.
 ///
-/// Handles vertical movement using impulses scaled by mass. Upward propulsion
-/// is boosted by gravity magnitude to counteract gravity.
+/// Handles flying movement using impulses scaled by mass. Uses the dedicated
+/// flying configuration (`fly_max_speed`, `fly_vertical_speed_ratio`,
+/// `fly_gravity_compensation`) for speed and acceleration.
 ///
-/// Flying downwards is disabled while grounded.
+/// Key behaviors:
+/// - Upward propulsion is boosted by gravity based on `fly_gravity_compensation`
+/// - Vertical speed is scaled by `fly_vertical_speed_ratio`
+/// - When grounded: applies friction to horizontal flying like walking
+/// - When airborne: horizontal flying uses full fly_max_speed (no air control reduction)
+/// - Flying downwards: stops propulsion at max speed but does not counteract gravity
+/// - Flying downwards is disabled while grounded (only horizontal and up work grounded)
 pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
     let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
         .query::<(
@@ -782,42 +789,82 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
 
     for (entity, config, intent, controller) in entities {
         let is_grounded = controller.is_grounded(&config);
-
-        // Flying downwards is disabled while grounded
-        let fly_direction = intent.fly;
-        let should_apply_fly = intent.is_flying() && !(is_grounded && intent.is_flying_down());
-
-        if !should_apply_fly {
-            continue;
-        }
-
         let current_velocity = B::get_velocity(world, entity);
         let mass = B::get_mass(world, entity);
         let up = controller.ideal_up();
+        let right = controller.ideal_right();
 
-        let current_vertical = current_velocity.dot(up);
-        let desired_vertical = intent.effective_fly() * config.max_speed;
+        // === VERTICAL FLYING ===
+        // Flying downwards is disabled while grounded
+        let fly_direction = intent.fly;
+        let should_apply_vertical_fly =
+            intent.is_flying() && !(is_grounded && intent.is_flying_down());
 
-        let mut fly_accel = config.acceleration;
-        // Boost upward propulsion by gravity magnitude to counteract gravity
-        if fly_direction > 0.0 {
-            fly_accel += controller.gravity.length();
+        if should_apply_vertical_fly {
+            let current_vertical = current_velocity.dot(up);
+
+            // Apply vertical speed ratio to the target speed
+            let vertical_max_speed = config.fly_max_speed * config.fly_vertical_speed_ratio;
+            let desired_vertical = intent.effective_fly() * vertical_max_speed;
+
+            // When flying down: stop propulsion at max speed but don't counteract gravity
+            // This means we only apply force if we're slower than max speed going down
+            let should_apply_downward =
+                !intent.is_flying_down() || current_vertical > -vertical_max_speed;
+
+            if should_apply_downward {
+                let mut fly_accel = config.acceleration;
+
+                // Boost upward propulsion by gravity based on compensation setting
+                if fly_direction > 0.0 {
+                    fly_accel += controller.gravity.length() * config.fly_gravity_compensation;
+                }
+
+                // Calculate velocity change toward target, clamped by max acceleration
+                let velocity_diff = desired_vertical - current_vertical;
+                let max_change = fly_accel * dt;
+                let change = velocity_diff.clamp(-max_change, max_change);
+
+                // Apply impulse along up axis: I = m * dv
+                let fly_impulse = up * change * mass;
+                B::apply_impulse(world, entity, fly_impulse);
+
+                // Record upward propulsion when actively flying up
+                if fly_direction > 0.0 && change > 0.0 {
+                    if let Some(mut controller) = world.get_mut::<CharacterController>(entity) {
+                        controller.record_upward_propulsion(config.jump_spring_filter_duration);
+                    }
+                }
+            }
         }
 
-        // Calculate velocity change toward target, clamped by max acceleration
-        let velocity_diff = desired_vertical - current_vertical;
-        let max_change = fly_accel * dt;
-        let change = velocity_diff.clamp(-max_change, max_change);
+        // === HORIZONTAL FLYING ===
+        if intent.is_flying_horizontal() {
+            let current_horizontal = current_velocity.dot(right);
+            let desired_horizontal = intent.effective_fly_horizontal() * config.fly_max_speed;
 
-        // Apply impulse along up axis: I = m * dv
-        let fly_impulse = up * change * mass;
-        B::apply_impulse(world, entity, fly_impulse);
+            // When grounded: use walking friction and acceleration
+            // When airborne: full flying speed, no air control reduction
+            let fly_accel = config.acceleration;
 
-        // Record upward propulsion when actively flying up
-        if fly_direction > 0.0 && change > 0.0 {
-            if let Some(mut controller) = world.get_mut::<CharacterController>(entity) {
-                controller.record_upward_propulsion(config.jump_spring_filter_duration);
-            }
+            // Calculate velocity change toward target, clamped by max acceleration
+            let velocity_diff = desired_horizontal - current_horizontal;
+            let max_change = fly_accel * dt;
+            let change = velocity_diff.clamp(-max_change, max_change);
+
+            // Apply friction when grounded and not actively flying horizontally
+            let friction_factor = if is_grounded && !intent.is_flying_horizontal() {
+                1.0 - config.friction
+            } else {
+                1.0
+            };
+
+            let new_horizontal = (current_horizontal + change) * friction_factor;
+            let horizontal_delta = new_horizontal - current_horizontal;
+
+            // Apply impulse along right axis: I = m * dv
+            let fly_horizontal_impulse = right * horizontal_delta * mass;
+            B::apply_impulse(world, entity, fly_horizontal_impulse);
         }
     }
 }
