@@ -730,11 +730,14 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
             let max_change = walk_accel * dt;
             let change = velocity_diff.clamp(-max_change, max_change);
 
-            // Apply friction when not walking
-            let friction_factor = if !intent.is_walking() {
-                1.0 - config.friction
-            } else {
+            // Only disable friction when walking forward (same direction as current velocity)
+            let walking_forward = intent.is_walking()
+                && (current_slope_speed.abs() <= 0.001
+                    || effective_walk.signum() == current_slope_speed.signum());
+            let friction_factor = if walking_forward {
                 1.0
+            } else {
+                1.0 - config.friction
             };
             let new_slope_speed = (current_slope_speed + change) * friction_factor;
             let slope_velocity_delta = new_slope_speed - current_slope_speed;
@@ -950,11 +953,14 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
             let max_change = walk_accel * dt;
             let change = velocity_diff.clamp(-max_change, max_change);
 
-            // Apply friction when not walking
-            let friction_factor = if !intent.is_walking() {
-                1.0 - config.friction
-            } else {
+            // Only disable friction when walking forward (same direction as current velocity)
+            let walking_forward = intent.is_walking()
+                && (current_slope_speed.abs() <= 0.001
+                    || intent.effective_walk().signum() == current_slope_speed.signum());
+            let friction_factor = if walking_forward {
                 1.0
+            } else {
+                1.0 - config.friction
             };
             let new_slope_speed = (current_slope_speed + change) * friction_factor;
             let slope_velocity_delta = new_slope_speed - current_slope_speed;
