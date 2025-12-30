@@ -494,6 +494,107 @@ pub fn apply_fall_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
     }
 }
 
+/// Apply wall clinging dampening to slow descent when clinging to a wall.
+///
+/// When the character is touching a wall and has movement intent toward that wall,
+/// this system applies an impulse to counteract downward motion along the wall surface.
+/// This creates a "clinging" effect where the character slides down more slowly.
+///
+/// Dampening is NOT applied when:
+/// - The character has downward fly intent (allowing intentional descent)
+/// - The character is not moving toward the wall
+/// - `wall_clinging_dampening` is 0.0
+pub fn apply_wall_clinging_dampening<B: CharacterPhysicsBackend>(world: &mut World) {
+    // Collect entities that might need wall dampening
+    let entities: Vec<(Entity, ControllerConfig, CharacterController, MovementIntent)> = world
+        .query::<(
+            Entity,
+            &ControllerConfig,
+            &CharacterController,
+            &MovementIntent,
+        )>()
+        .iter(world)
+        .filter(|(_, config, controller, _)| {
+            // Only process entities with wall clinging enabled and non-zero dampening
+            config.wall_clinging
+                && config.wall_clinging_dampening > 0.0
+                && controller.touching_wall()
+        })
+        .map(|(e, config, controller, intent)| {
+            (e, *config, controller.clone(), intent.clone())
+        })
+        .collect();
+
+    for (entity, config, controller, intent) in entities {
+        let effective_walk = intent.effective_walk();
+
+        // Determine which wall we're clinging to based on movement intent
+        // We only apply dampening when moving TOWARD the wall
+        let (wall_data, moving_toward_wall) = if effective_walk > 0.0 && controller.touching_right_wall() {
+            // Moving right and touching right wall
+            (controller.right_wall.as_ref(), true)
+        } else if effective_walk < 0.0 && controller.touching_left_wall() {
+            // Moving left and touching left wall
+            (controller.left_wall.as_ref(), true)
+        } else {
+            (None, false)
+        };
+
+        // Skip if not moving toward a wall
+        if !moving_toward_wall {
+            continue;
+        }
+
+        let Some(wall) = wall_data else {
+            continue;
+        };
+
+        // Skip if player has downward fly intent (wants to descend intentionally)
+        if intent.is_flying_down() {
+            continue;
+        }
+
+        // Calculate the "downward along wall" direction
+        // This is perpendicular to the wall normal, aligned with gravity direction
+        let wall_normal = wall.normal;
+        let ideal_down = controller.ideal_down();
+
+        // Wall tangent: perpendicular to normal. Two options: rotate 90° CW or CCW
+        // We pick the one that has a component in the downward direction
+        let tangent_option1 = Vec2::new(wall_normal.y, -wall_normal.x);
+        let tangent_option2 = Vec2::new(-wall_normal.y, wall_normal.x);
+
+        let wall_down = if tangent_option1.dot(ideal_down) > 0.0 {
+            tangent_option1
+        } else {
+            tangent_option2
+        };
+
+        // Get current velocity
+        let velocity = B::get_velocity(world, entity);
+        let mass = B::get_mass(world, entity);
+
+        // Get velocity component along the wall-down direction
+        let down_velocity = velocity.dot(wall_down);
+
+        // Only apply dampening if moving downward along the wall
+        if down_velocity > 0.0 {
+            // Calculate the impulse to counteract the downward motion
+            // dampening of 1.0 = fully counteract, 0.0 = no effect
+            // We apply a portion of the counteracting impulse each frame
+            // to create smooth dampening rather than instant stop
+            let dampening_factor = config.wall_clinging_dampening;
+
+            // Apply as velocity reduction per frame (smooth dampening)
+            // Impulse = mass * delta_velocity
+            let velocity_reduction = down_velocity * dampening_factor;
+            let dampening_impulse = -wall_down * velocity_reduction * mass;
+
+            B::apply_impulse(world, entity, dampening_impulse);
+        }
+    }
+}
+
 /// Apply walking movement based on intent.
 ///
 /// Handles horizontal movement using impulses scaled by mass for consistent
