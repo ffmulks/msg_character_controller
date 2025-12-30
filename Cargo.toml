@@ -1,11 +1,17 @@
 [package]
 name = "msg_character_controller"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 authors = ["ffmulks <63452434+ffmulks@users.noreply.github.com>"]
-description = "Advanced 2D floating rigidbody character controller with physics backend abstraction"
+description = "Advanced 2D floating rigidbody character controller for Bevy with physics backend abstraction"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ffmulks/msg_character_controller"
+documentation = "https://docs.rs/msg_character_controller"
+readme = "README.md"
+keywords = ["bevy", "gamedev", "character-controller", "physics", "2d"]
+categories = ["game-development", "game-engines"]
+exclude = [".github/", "CLAUDE.md"]
 
 [dependencies]
 bevy = { version = "0.16", default-features = false, features = ["bevy_render", "bevy_asset"] }

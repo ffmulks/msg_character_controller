@@ -274,43 +274,6 @@ fn rapier_shapecast(
         })
 }
 
-/// Perform a raycast using RapierContext.
-fn rapier_raycast(
-    context: &RapierContext,
-    origin: Vec2,
-    direction: Vec2,
-    max_distance: f32,
-    exclude_entity: Entity,
-    collision_groups: Option<(Group, Group)>,
-) -> Option<CollisionData> {
-    // Create filter to exclude the casting entity
-    let mut filter = QueryFilter::default()
-        .exclude_rigid_body(exclude_entity)
-        .exclude_sensors();
-
-    // Apply collision groups if provided
-    if let Some((memberships, filters)) = collision_groups {
-        filter = filter.groups(CollisionGroups::new(memberships, filters));
-    }
-
-    // Perform the raycast
-    context
-        .cast_ray(
-            origin,
-            direction,
-            max_distance,
-            true, // solid = true for solid hits
-            filter,
-        )
-        .map(|(hit_entity, toi)| {
-            // Calculate hit point
-            let hit_point = origin + direction * toi;
-            // For a simple ray, we approximate the normal as opposite of ray direction
-            let normal = -direction;
-            CollisionData::new(toi, normal, hit_point, Some(hit_entity))
-        })
-}
-
 use crate::intent::MovementIntent;
 
 /// Rapier-specific ground detection system using shapecast.

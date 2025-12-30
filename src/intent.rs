@@ -252,20 +252,6 @@ impl MovementIntent {
     }
 }
 
-// === Legacy type aliases for backwards compatibility ===
-
-/// Walking movement intent (1D horizontal axis).
-///
-/// **Deprecated**: Use `MovementIntent` instead.
-#[deprecated(since = "0.2.0", note = "Use MovementIntent instead")]
-pub type WalkIntent = MovementIntent;
-
-/// Vertical propulsion intent.
-///
-/// **Deprecated**: Use `MovementIntent` instead.
-#[deprecated(since = "0.2.0", note = "Use MovementIntent instead")]
-pub type PropulsionIntent = MovementIntent;
-
 /// Jump request stored in MovementIntent.
 ///
 /// This represents a pending jump request with a timer for buffering.

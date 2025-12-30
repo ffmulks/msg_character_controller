@@ -52,7 +52,9 @@ pub mod backend;
 pub mod collision;
 pub mod config;
 pub mod intent;
-pub mod systems;
+
+// Systems are internal - they're added automatically by the plugin
+pub(crate) mod systems;
 
 #[cfg(feature = "rapier2d")]
 pub mod rapier;
@@ -92,6 +94,26 @@ pub enum CharacterControllerSet {
 
 pub mod prelude {
     //! Convenient re-exports for common usage.
+    //!
+    //! This module provides all the types you need to get started with the character controller:
+    //!
+    //! ```rust,no_run
+    //! use bevy::prelude::*;
+    //! use bevy_rapier2d::prelude::*;
+    //! use msg_character_controller::prelude::*;
+    //!
+    //! fn spawn_character(mut commands: Commands) {
+    //!     commands.spawn((
+    //!         Transform::from_xyz(0.0, 100.0, 0.0),
+    //!         CharacterController::new(),
+    //!         ControllerConfig::player(),
+    //!         MovementIntent::default(),
+    //!         Rapier2dCharacterBundle::rotation_locked(),
+    //!         Collider::capsule_y(8.0, 4.0),
+    //!         GravityScale(0.0),
+    //!     ));
+    //! }
+    //! ```
 
     pub use crate::CharacterControllerPlugin;
     pub use crate::CharacterControllerSet;
@@ -101,7 +123,7 @@ pub mod prelude {
     pub use crate::intent::{JumpRequest, MovementIntent};
 
     #[cfg(feature = "rapier2d")]
-    pub use crate::rapier::Rapier2dBackend;
+    pub use crate::rapier::{Rapier2dBackend, Rapier2dCharacterBundle};
 }
 
 /// Main plugin for the character controller system.
