@@ -127,6 +127,9 @@ pub fn update_timers(
 
         // Tick the recently jumped timer
         controller.recently_jumped_timer.tick(delta);
+
+        // Tick the jump max ascent timer
+        controller.jump_max_ascent_timer.tick(delta);
     }
 }
 
@@ -493,9 +496,11 @@ pub fn apply_fall_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
         // 3. AND either:
         //    - Jump button not pressed (player let go)
         //    - OR we're moving downward (crossed the zenith)
+        //    - OR max ascent timer has expired (forces fall gravity after max jump duration)
+        let max_ascent_expired = controller.jump_max_ascent_expired();
         let should_trigger = controller.in_jump_cancel_window()
             && !controller.recently_jumped()
-            && (!jump_pressed || vertical_velocity < 0.0);
+            && (!jump_pressed || vertical_velocity < 0.0 || max_ascent_expired);
 
         // Trigger fall gravity if conditions are met
         if should_trigger && !controller.fall_gravity_active() {
@@ -1107,6 +1112,8 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
             controller.record_jump(config.jump_cancel_window);
             // Record recently jumped for fall gravity protection and coyote rejection
             controller.record_recently_jumped(config.recently_jumped_duration);
+            // Record jump max ascent for forcing fall gravity after max duration
+            controller.record_jump_max_ascent(config.jump_max_ascent_duration);
 
             // For wall jumps, block movement toward the wall to help jump away correctly
             // LeftWall jump: block leftward movement (toward the left wall)

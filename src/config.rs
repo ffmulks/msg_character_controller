@@ -125,6 +125,12 @@ pub struct CharacterController {
     #[reflect(ignore)]
     pub recently_jumped_timer: Timer,
 
+    /// Timer tracking maximum jump ascent duration.
+    /// When a jump occurs, this timer is reset. When it expires, fall gravity
+    /// is forced regardless of button state, limiting maximum jump height.
+    #[reflect(ignore)]
+    pub jump_max_ascent_timer: Timer,
+
     /// The direction that is blocked during wall jump movement blocking.
     /// Positive = block rightward movement (jumped from right wall)
     /// Negative = block leftward movement (jumped from left wall)
@@ -202,6 +208,9 @@ impl Default for CharacterController {
             // Recently jumped timer starts finished (not recently jumped)
             // Duration is set by the system based on config.recently_jumped_duration
             recently_jumped_timer: Timer::new(Duration::ZERO, TimerMode::Once),
+            // Jump max ascent timer starts finished (no active jump)
+            // Duration is set by the system based on config.jump_max_ascent_duration
+            jump_max_ascent_timer: Timer::new(Duration::ZERO, TimerMode::Once),
             // No direction blocked initially
             wall_jump_blocked_direction: 0.0,
             // Intent state
@@ -589,6 +598,30 @@ impl CharacterController {
         !self.recently_jumped_timer.finished()
     }
 
+    // === Jump Max Ascent Timer Methods ===
+
+    /// Record a jump for max ascent tracking.
+    /// This starts the jump_max_ascent timer which forces fall gravity when expired.
+    pub fn record_jump_max_ascent(&mut self, jump_max_ascent_duration: f32) {
+        if jump_max_ascent_duration > 0.0 {
+            self.jump_max_ascent_timer
+                .set_duration(Duration::from_secs_f32(jump_max_ascent_duration));
+            self.jump_max_ascent_timer.reset();
+        }
+    }
+
+    /// Check if within the max ascent window.
+    /// Returns true if the jump is still in its max ascent period.
+    pub fn in_jump_max_ascent_window(&self) -> bool {
+        !self.jump_max_ascent_timer.finished()
+    }
+
+    /// Check if the max ascent timer just finished this frame.
+    /// Returns true if fall gravity should be forced due to timer expiration.
+    pub fn jump_max_ascent_expired(&self) -> bool {
+        self.jump_max_ascent_timer.just_finished()
+    }
+
     // === Force Accumulation Methods ===
 
     /// Add force to the internal accumulator (called by controller systems).
@@ -798,6 +831,12 @@ pub struct ControllerConfig {
     /// Set to 0.0 to disable.
     pub recently_jumped_duration: f32,
 
+    /// Maximum duration (seconds) of jump ascent before fall gravity is forced.
+    /// When this timer expires after a jump, fall gravity is triggered regardless
+    /// of whether the jump button is held. This limits maximum jump height.
+    /// Set to 0.0 to disable (jump can ascend indefinitely while button held).
+    pub jump_max_ascent_duration: f32,
+
     // === Upright Torque Settings ===
     /// Whether to apply torque to keep the character upright.
     pub upright_torque_enabled: bool,
@@ -866,6 +905,7 @@ impl Default for ControllerConfig {
             jump_cancel_window: 2.0,       // 2 seconds to cancel jump
             fall_gravity_duration: 0.3,    // 300ms of fall gravity
             recently_jumped_duration: 0.15, // 150ms protection after jump
+            jump_max_ascent_duration: 0.6, // 600ms max ascent before forced fall gravity
 
             // Wall jump settings
             wall_jumping: false,
@@ -1017,6 +1057,13 @@ impl ControllerConfig {
     /// Duration after a jump during which fall gravity is blocked and coyote timer won't reset.
     pub fn with_recently_jumped_duration(mut self, duration: f32) -> Self {
         self.recently_jumped_duration = duration;
+        self
+    }
+
+    /// Builder: set jump max ascent duration.
+    /// Maximum duration of jump ascent before fall gravity is forced.
+    pub fn with_jump_max_ascent_duration(mut self, duration: f32) -> Self {
+        self.jump_max_ascent_duration = duration;
         self
     }
 
