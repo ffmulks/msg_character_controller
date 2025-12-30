@@ -337,15 +337,8 @@ fn rapier_ground_detection(
         return;
     };
 
-    for (
-        entity,
-        transform,
-        config,
-        movement_intent,
-        mut controller,
-        collision_groups,
-        collider,
-    ) in &mut q_controllers
+    for (entity, transform, config, movement_intent, mut controller, collision_groups, collider) in
+        &mut q_controllers
     {
         let position = transform.translation().xy();
 
@@ -496,7 +489,8 @@ fn check_stair_step(
 
     // Get the current ground level under the character (from center position)
     // Use a longer cast distance here to ensure we detect the ground below
-    let ground_cast_distance = config.max_climb_height + float_height + config.stair_tolerance + 2.0;
+    let ground_cast_distance =
+        config.max_climb_height + float_height + config.stair_tolerance + 2.0;
     let current_ground_hit = rapier_shapecast(
         context,
         position,
@@ -509,9 +503,7 @@ fn check_stair_step(
         collision_groups,
     );
 
-    let current_ground_distance = current_ground_hit
-        .map(|h| h.distance)
-        .unwrap_or(f32::MAX);
+    let current_ground_distance = current_ground_hit.map(|h| h.distance).unwrap_or(f32::MAX);
 
     // Calculate step height: how much higher is the step surface compared to our current ground?
     // The step is at cast_origin + down * stair_hit.distance
@@ -527,7 +519,8 @@ fn check_stair_step(
     // Check if the step height is within climbable range:
     // - Higher than float_height + tolerance (needs climbing, not just spring)
     // - Lower than max_climb_height (not too high to climb)
-    if step_height > float_height + config.stair_tolerance && step_height <= config.max_climb_height {
+    if step_height > float_height + config.stair_tolerance && step_height <= config.max_climb_height
+    {
         // Also verify the step has adequate depth (horizontal surface)
         // Check that the normal is mostly upward (floor surface, not wall)
         let normal_up_component = stair_hit.normal.dot(up);
@@ -648,9 +641,7 @@ fn rapier_ceiling_detection(
         return;
     };
 
-    for (entity, transform, config, mut controller, collision_groups) in
-        &mut q_controllers
-    {
+    for (entity, transform, config, mut controller, collision_groups) in &mut q_controllers {
         let position = transform.translation().xy();
 
         // Use ideal up direction from gravity, NOT from orientation or transform.
@@ -664,7 +655,8 @@ fn rapier_ceiling_detection(
         let shape_rotation = controller.ideal_up_angle() - std::f32::consts::FRAC_PI_2;
 
         // Ceiling cast length: surface_detection_distance + capsule_half_height + small buffer for precision
-        let ceiling_cast_length = config.surface_detection_distance + controller.capsule_half_height() + 1.0;
+        let ceiling_cast_length =
+            config.surface_detection_distance + controller.capsule_half_height() + 1.0;
 
         // Shapecast upward
         if let Some(ceiling_hit) = rapier_shapecast(

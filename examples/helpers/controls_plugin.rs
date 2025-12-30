@@ -82,6 +82,7 @@ impl ControlsPlugin {
 
 impl Plugin for ControlsPlugin {
     fn build(&self, app: &mut App) {
+        app.add_systems(Startup, setup);
         app.add_systems(Update, handle_input);
 
         if self.camera_follow {
@@ -160,6 +161,13 @@ fn handle_input(
     }
 }
 
+// ==================== Setup ====================
+
+fn setup(mut commands: Commands) {
+    // Camera
+    commands.spawn((Camera2d, Transform::from_xyz(0.0, 0.0, 1000.0)));
+}
+
 /// Smoothly follows the player with the camera.
 ///
 /// Uses linear interpolation to create a smooth camera follow effect.
@@ -178,9 +186,11 @@ fn camera_follow(
     };
 
     // Smooth camera follow
-    let target = player_transform.translation.xy();
-    let current = camera_transform.translation.xy();
-    let smoothed = current.lerp(target, 0.1);
-    camera_transform.translation.x = smoothed.x;
-    camera_transform.translation.y = smoothed.y;
+    camera_transform.translation = camera_transform
+        .translation
+        .lerp(player_transform.translation, 0.05);
+
+    camera_transform.rotation = camera_transform
+        .rotation
+        .slerp(player_transform.rotation, 0.1);
 }

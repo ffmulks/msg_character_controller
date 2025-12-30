@@ -119,7 +119,10 @@ pub fn ground_detection_ui(
 
         ui.horizontal(|ui| {
             ui.label("Time Since Grounded:");
-            ui.label(format!("{:.3}s", controller.coyote_timer.duration().as_secs_f32()));
+            ui.label(format!(
+                "{:.3}s",
+                controller.coyote_timer.duration().as_secs_f32()
+            ));
         });
     });
 }

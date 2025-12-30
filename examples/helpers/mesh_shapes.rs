@@ -37,7 +37,10 @@ pub fn create_capsule_mesh(half_height: f32, radius: f32, segments: usize) -> Me
         let y = half_height + angle.sin() * radius;
         positions.push([x, y, 0.0]);
         normals.push([0.0, 0.0, 1.0]);
-        uvs.push([0.5 + x / (radius * 2.0), 0.5 + y / ((half_height + radius) * 2.0)]);
+        uvs.push([
+            0.5 + x / (radius * 2.0),
+            0.5 + y / ((half_height + radius) * 2.0),
+        ]);
     }
 
     // Bottom semicircle (from right to left)
@@ -47,7 +50,10 @@ pub fn create_capsule_mesh(half_height: f32, radius: f32, segments: usize) -> Me
         let y = -half_height + angle.sin() * radius;
         positions.push([x, y, 0.0]);
         normals.push([0.0, 0.0, 1.0]);
-        uvs.push([0.5 + x / (radius * 2.0), 0.5 + y / ((half_height + radius) * 2.0)]);
+        uvs.push([
+            0.5 + x / (radius * 2.0),
+            0.5 + y / ((half_height + radius) * 2.0),
+        ]);
     }
 
     // Create triangle fan indices
@@ -132,9 +138,15 @@ pub fn create_triangle_mesh(vertices: &[Vec2; 3]) -> Mesh {
 
     // Calculate bounding box for UV coordinates
     let min_x = vertices.iter().map(|v| v.x).fold(f32::INFINITY, f32::min);
-    let max_x = vertices.iter().map(|v| v.x).fold(f32::NEG_INFINITY, f32::max);
+    let max_x = vertices
+        .iter()
+        .map(|v| v.x)
+        .fold(f32::NEG_INFINITY, f32::max);
     let min_y = vertices.iter().map(|v| v.y).fold(f32::INFINITY, f32::min);
-    let max_y = vertices.iter().map(|v| v.y).fold(f32::NEG_INFINITY, f32::max);
+    let max_y = vertices
+        .iter()
+        .map(|v| v.y)
+        .fold(f32::NEG_INFINITY, f32::max);
     let width = max_x - min_x;
     let height = max_y - min_y;
 
@@ -142,8 +154,16 @@ pub fn create_triangle_mesh(vertices: &[Vec2; 3]) -> Mesh {
         .iter()
         .map(|v| {
             [
-                if width > 0.0 { (v.x - min_x) / width } else { 0.5 },
-                if height > 0.0 { (v.y - min_y) / height } else { 0.5 },
+                if width > 0.0 {
+                    (v.x - min_x) / width
+                } else {
+                    0.5
+                },
+                if height > 0.0 {
+                    (v.y - min_y) / height
+                } else {
+                    0.5
+                },
             ]
         })
         .collect();
@@ -187,9 +207,15 @@ pub fn create_polygon_mesh(vertices: &[Vec2]) -> Mesh {
 
     // Calculate bounding box for UV mapping
     let min_x = vertices.iter().map(|v| v.x).fold(f32::INFINITY, f32::min);
-    let max_x = vertices.iter().map(|v| v.x).fold(f32::NEG_INFINITY, f32::max);
+    let max_x = vertices
+        .iter()
+        .map(|v| v.x)
+        .fold(f32::NEG_INFINITY, f32::max);
     let min_y = vertices.iter().map(|v| v.y).fold(f32::INFINITY, f32::min);
-    let max_y = vertices.iter().map(|v| v.y).fold(f32::NEG_INFINITY, f32::max);
+    let max_y = vertices
+        .iter()
+        .map(|v| v.y)
+        .fold(f32::NEG_INFINITY, f32::max);
     let width = max_x - min_x;
     let height = max_y - min_y;
 
@@ -197,8 +223,16 @@ pub fn create_polygon_mesh(vertices: &[Vec2]) -> Mesh {
     positions.push([center.x, center.y, 0.0]);
     normals.push([0.0, 0.0, 1.0]);
     uvs.push([
-        if width > 0.0 { (center.x - min_x) / width } else { 0.5 },
-        if height > 0.0 { (center.y - min_y) / height } else { 0.5 },
+        if width > 0.0 {
+            (center.x - min_x) / width
+        } else {
+            0.5
+        },
+        if height > 0.0 {
+            (center.y - min_y) / height
+        } else {
+            0.5
+        },
     ]);
 
     // Outer vertices
@@ -206,8 +240,16 @@ pub fn create_polygon_mesh(vertices: &[Vec2]) -> Mesh {
         positions.push([v.x, v.y, 0.0]);
         normals.push([0.0, 0.0, 1.0]);
         uvs.push([
-            if width > 0.0 { (v.x - min_x) / width } else { 0.5 },
-            if height > 0.0 { (v.y - min_y) / height } else { 0.5 },
+            if width > 0.0 {
+                (v.x - min_x) / width
+            } else {
+                0.5
+            },
+            if height > 0.0 {
+                (v.y - min_y) / height
+            } else {
+                0.5
+            },
         ]);
     }
 
@@ -252,12 +294,7 @@ pub fn create_rectangle_mesh(half_width: f32, half_height: f32) -> Mesh {
 
     let normals: Vec<[f32; 3]> = vec![[0.0, 0.0, 1.0]; 4];
 
-    let uvs: Vec<[f32; 2]> = vec![
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [1.0, 1.0],
-        [0.0, 1.0],
-    ];
+    let uvs: Vec<[f32; 2]> = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
 
     let mut mesh = Mesh::new(
         PrimitiveTopology::TriangleList,

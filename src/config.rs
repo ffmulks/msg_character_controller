@@ -881,10 +881,10 @@ impl Default for ControllerConfig {
     fn default() -> Self {
         Self {
             // Float settings
-            float_height: 6.0,               // gap between collider bottom and ground
-            grounding_distance: 4.0,         // tolerance for spring activation and grounding buffer
+            float_height: 6.0,       // gap between collider bottom and ground
+            grounding_distance: 4.0, // tolerance for spring activation and grounding buffer
             surface_detection_distance: 2.0, // distance for wall/ceiling detection
-            grounding_strength: 3.0,         // multiplier for downward spring force
+            grounding_strength: 3.0, // multiplier for downward spring force
 
             // Spring settings
             spring_strength: 300.0,
@@ -899,11 +899,11 @@ impl Default for ControllerConfig {
             friction: 0.06,
             air_control: 0.15,
             // Flying settings
-            fly_max_speed: 150.0,              // Same as max_speed by default
-            fly_vertical_speed_ratio: 0.6,     // Same speed vertical and horizontal
+            fly_max_speed: 150.0,               // Same as max_speed by default
+            fly_vertical_speed_ratio: 0.6,      // Same speed vertical and horizontal
             fly_gravity_compensation: 0.05,     // Gravity compensation by default
-            wall_clinging: true, // Allow wall clinging by default
-            wall_clinging_dampening: 0.5, // Moderate wall dampening by default
+            wall_clinging: true,                // Allow wall clinging by default
+            wall_clinging_dampening: 0.5,       // Moderate wall dampening by default
             wall_clinging_dampen_upward: false, // Only dampen downward motion by default
 
             // Slope settings
@@ -922,9 +922,9 @@ impl Default for ControllerConfig {
             jump_speed: 75.0,
             coyote_time: 0.15,
             jump_buffer_time: 0.1,
-            fall_gravity: 6.0,             // gravity multiplier when jump is cancelled
-            jump_cancel_window: 2.0,       // time window to cancel jump
-            fall_gravity_duration: 0.15,    // how long fall gravity is applied
+            fall_gravity: 3.0,       // gravity multiplier when jump is cancelled
+            jump_cancel_window: 2.0, // time window to cancel jump
+            fall_gravity_duration: 0.15, // how long fall gravity is applied
             recently_jumped_duration: 0.15, // protection window after jump
             jump_max_ascent_duration: 0.45, // max ascent time before forced fall gravity
 
@@ -932,7 +932,7 @@ impl Default for ControllerConfig {
             wall_jumping: true,
             wall_jump_angle: std::f32::consts::FRAC_PI_4, // pi/4 radians
             wall_jump_movement_block_duration: 0.15, // blocks wall-ward movement after wall jump
-            wall_jump_velocity_compensation: 0.5, // fraction of downward velocity to compensate
+            wall_jump_velocity_compensation: 0.5,    // fraction of downward velocity to compensate
             wall_jump_retain_height: true, // Same height as ground jump with horizontal added
 
             // Upright torque settings
@@ -1423,7 +1423,10 @@ mod tests {
 
         // With stair climbing
         controller.active_stair_height = 5.0;
-        assert_eq!(controller.effective_riding_height(&config), base_height + 5.0);
+        assert_eq!(
+            controller.effective_riding_height(&config),
+            base_height + 5.0
+        );
     }
 
     #[test]

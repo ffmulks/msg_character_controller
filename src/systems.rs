@@ -144,9 +144,7 @@ pub fn update_timers(
 /// This runs after sensors and timers, before evaluate_intent, so that
 /// buffered jumps will process the correct jump type when contact is made.
 /// The last_jump_type is stored on the controller for coyote time to respect.
-pub fn update_jump_type(
-    mut query: Query<(&mut CharacterController, &ControllerConfig)>,
-) {
+pub fn update_jump_type(mut query: Query<(&mut CharacterController, &ControllerConfig)>) {
     use crate::config::JumpType;
 
     for (mut controller, config) in &mut query {
@@ -200,8 +198,8 @@ pub fn evaluate_intent<B: CharacterPhysicsBackend>(
         // Check if intending to jump (has valid jump request and can jump)
         // Expired requests are already removed by expire_jump_requests
         // Can jump if: grounded, touching wall (with wall jumping), or within coyote time
-        let has_contact = controller.is_grounded(config)
-            || (config.wall_jumping && controller.touching_wall());
+        let has_contact =
+            controller.is_grounded(config) || (config.wall_jumping && controller.touching_wall());
         let can_jump = has_contact || controller.in_coyote_time();
 
         // For wall jumps via coyote time, also check that last_jump_type is a wall type
@@ -244,7 +242,6 @@ pub fn evaluate_intent<B: CharacterPhysicsBackend>(
 ///
 /// Upward spring forces always remain active.
 pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
-
     let entities: Vec<(Entity, ControllerConfig, CharacterController)> = world
         .query::<(Entity, &ControllerConfig, &CharacterController)>()
         .iter(world)
@@ -542,7 +539,12 @@ pub fn apply_fall_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
 /// - `wall_clinging_dampening` is 0.0
 pub fn apply_wall_clinging_dampening<B: CharacterPhysicsBackend>(world: &mut World) {
     // Collect entities that might need wall dampening
-    let entities: Vec<(Entity, ControllerConfig, CharacterController, MovementIntent)> = world
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        CharacterController,
+        MovementIntent,
+    )> = world
         .query::<(
             Entity,
             &ControllerConfig,
@@ -556,9 +558,7 @@ pub fn apply_wall_clinging_dampening<B: CharacterPhysicsBackend>(world: &mut Wor
                 && config.wall_clinging_dampening > 0.0
                 && controller.touching_wall()
         })
-        .map(|(e, config, controller, intent)| {
-            (e, *config, controller.clone(), intent.clone())
-        })
+        .map(|(e, config, controller, intent)| (e, *config, controller.clone(), intent.clone()))
         .collect();
 
     for (entity, config, controller, intent) in entities {
@@ -566,15 +566,16 @@ pub fn apply_wall_clinging_dampening<B: CharacterPhysicsBackend>(world: &mut Wor
 
         // Determine which wall we're clinging to based on movement intent
         // We only apply dampening when moving TOWARD the wall
-        let (wall_data, moving_toward_wall) = if effective_walk > 0.0 && controller.touching_right_wall() {
-            // Moving right and touching right wall
-            (controller.right_wall.as_ref(), true)
-        } else if effective_walk < 0.0 && controller.touching_left_wall() {
-            // Moving left and touching left wall
-            (controller.left_wall.as_ref(), true)
-        } else {
-            (None, false)
-        };
+        let (wall_data, moving_toward_wall) =
+            if effective_walk > 0.0 && controller.touching_right_wall() {
+                // Moving right and touching right wall
+                (controller.right_wall.as_ref(), true)
+            } else if effective_walk < 0.0 && controller.touching_left_wall() {
+                // Moving left and touching left wall
+                (controller.left_wall.as_ref(), true)
+            } else {
+                (None, false)
+            };
 
         // Skip if not moving toward a wall
         if !moving_toward_wall {
@@ -646,7 +647,12 @@ pub fn apply_wall_clinging_dampening<B: CharacterPhysicsBackend>(world: &mut Wor
 /// For the floating controller, friction is simulated internally since the character
 /// hovers above the ground and doesn't use Rapier's contact friction.
 pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        MovementIntent,
+        CharacterController,
+    )> = world
         .query::<(
             Entity,
             &ControllerConfig,
@@ -774,7 +780,12 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
 /// - Flying downwards: stops propulsion at max speed but does not counteract gravity
 /// - Flying downwards is disabled while grounded (only horizontal and up work grounded)
 pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        MovementIntent,
+        CharacterController,
+    )> = world
         .query::<(
             Entity,
             &ControllerConfig,
@@ -883,7 +894,12 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
 /// Flying downwards is disabled while grounded.
 #[deprecated(since = "0.3.0", note = "Use apply_walk and apply_fly separately")]
 pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
-    let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
+    let entities: Vec<(
+        Entity,
+        ControllerConfig,
+        MovementIntent,
+        CharacterController,
+    )> = world
         .query::<(
             Entity,
             &ControllerConfig,
@@ -1093,11 +1109,7 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
                     let angle = -config.wall_jump_angle; // Negative to rotate clockwise
                     let cos_a = angle.cos();
                     let sin_a = angle.sin();
-                    Vec2::new(
-                        up.x * cos_a - up.y * sin_a,
-                        up.x * sin_a + up.y * cos_a,
-                    )
-                    .normalize()
+                    Vec2::new(up.x * cos_a - up.y * sin_a, up.x * sin_a + up.y * cos_a).normalize()
                 }
             }
             JumpType::RightWall => {
@@ -1114,11 +1126,7 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
                     let angle = config.wall_jump_angle; // Positive to rotate counter-clockwise
                     let cos_a = angle.cos();
                     let sin_a = angle.sin();
-                    Vec2::new(
-                        up.x * cos_a - up.y * sin_a,
-                        up.x * sin_a + up.y * cos_a,
-                    )
-                    .normalize()
+                    Vec2::new(up.x * cos_a - up.y * sin_a, up.x * sin_a + up.y * cos_a).normalize()
                 }
             }
         };
@@ -1136,9 +1144,7 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
             // Wall jumps: compensate based on config (0.0 = none, 1.0 = full)
             let compensation = match controller.last_jump_type {
                 JumpType::Ground => 1.0,
-                JumpType::LeftWall | JumpType::RightWall => {
-                    config.wall_jump_velocity_compensation
-                }
+                JumpType::LeftWall | JumpType::RightWall => config.wall_jump_velocity_compensation,
             };
 
             if compensation > 0.0 {

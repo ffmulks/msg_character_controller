@@ -22,9 +22,9 @@ use bevy::sprite::ColorMaterial;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 use bevy_rapier2d::prelude::*;
 use helpers::{
-    create_capsule_mesh, create_circle_mesh, create_rectangle_mesh, create_triangle_mesh,
     CharacterControllerUiPlugin, CharacterControllerUiState, ControlsPlugin,
-    DefaultControllerSettings, Player, SpawnConfig,
+    DefaultControllerSettings, Player, SpawnConfig, create_capsule_mesh, create_circle_mesh,
+    create_rectangle_mesh, create_triangle_mesh,
 };
 use msg_character_controller::prelude::*;
 
@@ -92,7 +92,7 @@ fn main() {
         // Character controller
         .add_plugins(CharacterControllerPlugin::<Rapier2dBackend>::default())
         // Controls (input handling only - we have custom camera follow for planet)
-        .add_plugins(ControlsPlugin::input_only())
+        .add_plugins(ControlsPlugin::default())
         // Egui for settings UI
         .add_plugins(EguiPlugin::default())
         // Resources
@@ -115,7 +115,6 @@ fn main() {
                 msg_character_controller::systems::accumulate_spring_force::<Rapier2dBackend>,
             ),
         )
-        .add_systems(Update, camera_follow)
         // Extra settings UI for planet-specific configuration
         .add_systems(EguiPrimaryContextPass, planet_gravity_settings_ui)
         .run();
@@ -128,17 +127,26 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    // Camera
-    commands.spawn((Camera2d, Transform::from_xyz(0.0, PLANET_RADIUS, 0.0)));
-
     // Spawn planet
     spawn_planet(&mut commands, &mut meshes, &mut materials);
 
     // Spawn platform on top of planet
-    spawn_surface_platform(&mut commands, &mut meshes, &mut materials, 0.0, PLATFORM_WIDTH, PLATFORM_HEIGHT);
+    spawn_surface_platform(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        0.0,
+        PLATFORM_WIDTH,
+        PLATFORM_HEIGHT,
+    );
 
     // Spawn slope structure on the side
-    spawn_surface_slope(&mut commands, &mut meshes, &mut materials, std::f32::consts::FRAC_PI_4);
+    spawn_surface_slope(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        std::f32::consts::FRAC_PI_4,
+    );
 
     // Spawn player on top of planet
     spawn_player(&mut commands, &mut meshes, &mut materials);
@@ -283,7 +291,11 @@ fn spawn_player(
     let initial_gravity = -direction * GRAVITY_STRENGTH;
 
     // Create capsule mesh matching the collider
-    let mesh = meshes.add(create_capsule_mesh(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS, 12));
+    let mesh = meshes.add(create_capsule_mesh(
+        PLAYER_HALF_HEIGHT / 2.0,
+        PLAYER_RADIUS,
+        12,
+    ));
     let material = materials.add(ColorMaterial::from_color(Color::srgb(0.2, 0.6, 0.9)));
 
     commands
@@ -341,33 +353,6 @@ fn update_player_orientation_and_gravity(
             transform.rotation = Quat::from_rotation_z(angle);
         }
     }
-}
-
-// ==================== Camera ====================
-
-fn camera_follow(
-    player_query: Query<&Transform, (With<Player>, Without<Camera2d>)>,
-    mut camera_query: Query<&mut Transform, With<Camera2d>>,
-) {
-    let Ok(player_transform) = player_query.single() else {
-        return;
-    };
-
-    let Ok(mut camera_transform) = camera_query.single_mut() else {
-        return;
-    };
-
-    // Smooth camera follow - position slightly behind/above player relative to planet
-    let player_pos = player_transform.translation.xy();
-    let to_player = player_pos - PLANET_CENTER;
-    let camera_distance = to_player.length() + 150.0; // Keep camera behind player
-
-    let camera_target = PLANET_CENTER + to_player.normalize_or_zero() * camera_distance;
-
-    let current = camera_transform.translation.xy();
-    let smoothed = current.lerp(camera_target, 0.05);
-    camera_transform.translation.x = smoothed.x;
-    camera_transform.translation.y = smoothed.y;
 }
 
 // ==================== Planet Gravity Settings UI ====================

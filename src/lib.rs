@@ -178,7 +178,7 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
                 CharacterControllerSet::IntentApplication,
                 CharacterControllerSet::FinalApplication,
             )
-                .chain()
+                .chain(),
         );
 
         // Phase 1: Preparation
@@ -239,10 +239,7 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
         // Walk and fly can run in parallel as they affect orthogonal axes
         app.add_systems(
             FixedUpdate,
-            (
-                systems::apply_fall_gravity::<B>,
-                systems::apply_jump::<B>,
-            )
+            (systems::apply_fall_gravity::<B>, systems::apply_jump::<B>)
                 .chain()
                 .in_set(CharacterControllerSet::IntentApplication),
         );

@@ -21,8 +21,8 @@ use bevy::sprite::ColorMaterial;
 use bevy_egui::EguiPlugin;
 use bevy_rapier2d::prelude::*;
 use helpers::{
-    create_capsule_mesh, create_circle_mesh, create_rectangle_mesh, create_triangle_mesh,
     CharacterControllerUiPlugin, ControlsPlugin, DefaultControllerSettings, Player, SpawnConfig,
+    create_capsule_mesh, create_circle_mesh, create_rectangle_mesh, create_triangle_mesh,
 };
 use msg_character_controller::prelude::*;
 
@@ -52,8 +52,7 @@ fn default_gravity() -> Vec2 {
 }
 
 fn default_config() -> ControllerConfig {
-    ControllerConfig::player()
-        .with_float_height(6.0)
+    ControllerConfig::player().with_float_height(6.0)
 }
 
 fn main() {
@@ -97,9 +96,6 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    // Camera
-    commands.spawn((Camera2d, Transform::from_xyz(0.0, 0.0, 1000.0)));
-
     // Spawn environment
     spawn_box(&mut commands, &mut meshes, &mut materials);
     spawn_obstacles(&mut commands, &mut meshes, &mut materials);

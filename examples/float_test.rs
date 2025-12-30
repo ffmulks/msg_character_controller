@@ -19,8 +19,8 @@ use bevy::sprite::ColorMaterial;
 use bevy_egui::EguiPlugin;
 use bevy_rapier2d::prelude::*;
 use helpers::{
-    create_capsule_mesh, create_rectangle_mesh, CharacterControllerUiPlugin, ControlsPlugin,
-    DefaultControllerSettings, Player, SpawnConfig,
+    CharacterControllerUiPlugin, ControlsPlugin, DefaultControllerSettings, Player, SpawnConfig,
+    create_capsule_mesh, create_rectangle_mesh,
 };
 use msg_character_controller::prelude::*;
 
@@ -79,9 +79,6 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    // Camera
-    commands.spawn((Camera2d, Transform::from_xyz(0.0, 0.0, 1000.0)));
-
     // Debug text
     commands.spawn((
         Text::new("FLOAT TEST\nSpawning character 200 units above platform...\n"),
@@ -134,7 +131,11 @@ fn setup(
     println!("Expected center Y: {}", expected_hover_y);
 
     // Create capsule mesh matching the collider
-    let player_mesh = meshes.add(create_capsule_mesh(PLAYER_HALF_HEIGHT / 2.0, PLAYER_RADIUS, 12));
+    let player_mesh = meshes.add(create_capsule_mesh(
+        PLAYER_HALF_HEIGHT / 2.0,
+        PLAYER_RADIUS,
+        12,
+    ));
     let player_material = materials.add(ColorMaterial::from_color(Color::srgb(0.2, 0.6, 0.9)));
 
     commands
