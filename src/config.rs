@@ -903,7 +903,7 @@ impl Default for ControllerConfig {
             jump_buffer_time: 0.1,
             fall_gravity: 6.0,             // gravity multiplier when jump is cancelled
             jump_cancel_window: 2.0,       // time window to cancel jump
-            fall_gravity_duration: 0.3,    // how long fall gravity is applied
+            fall_gravity_duration: 0.15,    // how long fall gravity is applied
             recently_jumped_duration: 0.15, // protection window after jump
             jump_max_ascent_duration: 0.6, // max ascent time before forced fall gravity
 

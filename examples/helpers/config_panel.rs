@@ -296,6 +296,24 @@ pub fn jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                     .range(0.0..=100.0),
             );
         });
+
+        // Fall gravity duration (displayed in ms for user-friendliness)
+        let mut fall_gravity_ms = config.fall_gravity_duration * 1000.0;
+        ui.horizontal(|ui| {
+            ui.label("Fall Gravity Duration (ms):");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut fall_gravity_ms)
+                        .speed(10.0)
+                        .range(0.0..=1000.0),
+                )
+                .changed()
+            {
+                config.fall_gravity_duration = fall_gravity_ms / 1000.0;
+            }
+        });
+        ui.label("(how long extra gravity is applied)");
+
         ui.horizontal(|ui| {
             ui.label("Spring Filter Duration:");
             ui.add(
