@@ -39,17 +39,17 @@ pub fn float_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             );
         });
         ui.horizontal(|ui| {
-            ui.label("Ground Tolerance:");
+            ui.label("Grounding Distance:");
             ui.add(
-                egui::DragValue::new(&mut config.ground_tolerance)
+                egui::DragValue::new(&mut config.grounding_distance)
                     .speed(0.1)
                     .range(0.0..=20.0),
             );
         });
         ui.horizontal(|ui| {
-            ui.label("Grounding Distance:");
+            ui.label("Surface Detection:");
             ui.add(
-                egui::DragValue::new(&mut config.grounding_distance)
+                egui::DragValue::new(&mut config.surface_detection_distance)
                     .speed(0.1)
                     .range(0.0..=50.0),
             );
