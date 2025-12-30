@@ -406,6 +406,16 @@ impl CharacterController {
         !self.jump_spring_filter_timer.finished()
     }
 
+    /// Check if the character has upward intent (jumping or flying up).
+    /// Returns true if downward forces (spring, gravity) should be filtered.
+    ///
+    /// This combines same-frame intent (`intends_upward_propulsion`) with
+    /// cross-frame filtering (`jump_spring_filter_window`) for consistent behavior.
+    #[inline]
+    pub fn upward_intent(&self) -> bool {
+        self.intends_upward_propulsion || self.in_jump_spring_filter_window()
+    }
+
     /// Tick the coyote timer (call when not grounded).
     pub fn tick_coyote_timer(&mut self, delta: Duration) {
         self.coyote_timer.tick(delta);
