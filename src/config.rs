@@ -500,10 +500,13 @@ pub struct ControllerConfig {
     pub ground_tolerance: f32,
 
     /// Distance for wall and ceiling detection (extends from collider surface).
-    pub cling_distance: f32,
+    /// Also used as a buffer zone above riding_height where grounding_strength applies.
+    pub grounding_distance: f32,
 
-    /// Extra downward force multiplier when within cling distance.
-    pub cling_strength: f32,
+    /// Multiplier for downward spring force when character is within grounding_distance
+    /// above the riding_height. This helps keep the character grounded when slightly floating.
+    /// A value of 1.0 means no extra force, 2.0 doubles the downward force, etc.
+    pub grounding_strength: f32,
 
     // === Spring Settings ===
     /// Spring strength for the floating system.
@@ -613,8 +616,8 @@ impl Default for ControllerConfig {
             // Float settings
             float_height: 1.0,     // 1 pixel gap between collider bottom and ground
             ground_tolerance: 2.0, // tolerance for spring activation
-            cling_distance: 2.0,   // distance for wall/ceiling detection
-            cling_strength: 0.5,
+            grounding_distance: 2.0, // distance for wall/ceiling detection and grounding buffer
+            grounding_strength: 1.0, // multiplier for downward spring force (1.0 = no extra force)
 
             // Spring settings
             spring_strength: 800.0,
@@ -806,9 +809,15 @@ impl ControllerConfig {
         self
     }
 
-    /// Builder: set cling distance.
-    pub fn with_cling_distance(mut self, distance: f32) -> Self {
-        self.cling_distance = distance;
+    /// Builder: set grounding distance.
+    pub fn with_grounding_distance(mut self, distance: f32) -> Self {
+        self.grounding_distance = distance;
+        self
+    }
+
+    /// Builder: set grounding strength.
+    pub fn with_grounding_strength(mut self, strength: f32) -> Self {
+        self.grounding_strength = strength;
         self
     }
 }
