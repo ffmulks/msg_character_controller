@@ -365,7 +365,7 @@ fn rapier_ground_detection(
 
         // Calculate ground cast length:
         // riding_height + grounding_distance = float_height + capsule_half_height + grounding_distance
-        // Add a small buffer (1.0) to avoid edge cases with floating point precision
+        // Add a small buffer to avoid edge cases with floating point precision
         let riding_height = controller.riding_height(config);
         let ground_cast_length = riding_height + config.grounding_distance + 1.0;
 
@@ -529,10 +529,9 @@ fn check_stair_step(
     // - Lower than max_climb_height (not too high to climb)
     if step_height > float_height + config.stair_tolerance && step_height <= config.max_climb_height {
         // Also verify the step has adequate depth (horizontal surface)
-        // Check that the normal is mostly pointing up (it's a floor, not a wall)
+        // Check that the normal is mostly upward (floor surface, not wall)
         let normal_up_component = stair_hit.normal.dot(up);
         if normal_up_component > 0.7 {
-            // At least 45 degrees from horizontal
             return Some(step_height);
         }
     }

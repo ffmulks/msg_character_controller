@@ -864,7 +864,7 @@ impl Default for ControllerConfig {
     fn default() -> Self {
         Self {
             // Float settings
-            float_height: 6.0,               // 6 pixel gap between collider bottom and ground
+            float_height: 6.0,               // gap between collider bottom and ground
             grounding_distance: 4.0,         // tolerance for spring activation and grounding buffer
             surface_detection_distance: 2.0, // distance for wall/ceiling detection
             grounding_strength: 3.0,         // multiplier for downward spring force
@@ -874,7 +874,7 @@ impl Default for ControllerConfig {
             spring_damping: 13.0,
             spring_max_force: None,
             spring_max_velocity: None,
-            jump_spring_filter_duration: 0.15, // 150ms
+            jump_spring_filter_duration: 0.15, // duration to suppress spring after jumping
 
             // Movement settings
             max_speed: 150.0,
@@ -886,7 +886,7 @@ impl Default for ControllerConfig {
             wall_clinging_dampen_upward: false, // Only dampen downward motion by default
 
             // Slope settings
-            max_slope_angle: std::f32::consts::FRAC_PI_3, // 60 degrees
+            max_slope_angle: std::f32::consts::FRAC_PI_3, // pi/3 radians
             uphill_gravity_multiplier: 1.0,
 
             // Sensor settings (derived from float_height)
@@ -901,17 +901,17 @@ impl Default for ControllerConfig {
             jump_speed: 90.0,
             coyote_time: 0.15,
             jump_buffer_time: 0.1,
-            fall_gravity: 6.0,             // 6x gravity when jump is cancelled
-            jump_cancel_window: 2.0,       // 2 seconds to cancel jump
-            fall_gravity_duration: 0.15,   // 150ms of fall gravity
-            recently_jumped_duration: 0.15, // 150ms protection after jump
-            jump_max_ascent_duration: 0.6, // 600ms max ascent before forced fall gravity
+            fall_gravity: 6.0,             // gravity multiplier when jump is cancelled
+            jump_cancel_window: 2.0,       // time window to cancel jump
+            fall_gravity_duration: 0.15,    // how long fall gravity is applied
+            recently_jumped_duration: 0.15, // protection window after jump
+            jump_max_ascent_duration: 0.6, // max ascent time before forced fall gravity
 
             // Wall jump settings
             wall_jumping: true,
-            wall_jump_angle: std::f32::consts::FRAC_PI_4, // 45 degrees
-            wall_jump_movement_block_duration: 0.15, // 150ms
-            wall_jump_velocity_compensation: 0.5, // 50% downward velocity compensation
+            wall_jump_angle: std::f32::consts::FRAC_PI_4, // pi/4 radians
+            wall_jump_movement_block_duration: 0.15, // blocks wall-ward movement after wall jump
+            wall_jump_velocity_compensation: 0.5, // fraction of downward velocity to compensate
             wall_jump_retain_height: true, // Same height as ground jump with horizontal added
 
             // Upright torque settings
