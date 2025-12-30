@@ -723,20 +723,118 @@ pub fn apply_controller_forces(mut q: Query<(&mut ExternalForce, &mut CharacterC
 }
 
 /// Bundle for creating a character with Rapier2D physics.
+///
+/// This bundle provides all the necessary Rapier2D components for a character controller
+/// entity. It includes the rigid body, velocity tracking, external forces/impulses for
+/// movement, axis locking options, damping for smoother physics, and mass properties.
+///
+/// # Usage
+///
+/// Use this bundle when spawning a character controller entity to ensure all required
+/// physics components are present. The bundle provides sensible defaults but can be
+/// customized using the builder methods.
+///
+/// # Example
+///
+/// ```ignore
+/// use bevy::prelude::*;
+/// use bevy_rapier2d::prelude::*;
+/// use msg_character_controller::prelude::*;
+/// use msg_character_controller::rapier::Rapier2dCharacterBundle;
+///
+/// fn spawn_player(mut commands: Commands) {
+///     commands.spawn((
+///         // Transform and other visual components
+///         Transform::from_xyz(0.0, 100.0, 0.0),
+///         // Character controller components
+///         CharacterController::new(),
+///         ControllerConfig::player(),
+///         MovementIntent::default(),
+///         // Physics bundle - rotation locked for simple platformer
+///         Rapier2dCharacterBundle::rotation_locked(),
+///         // Collider shape
+///         Collider::capsule_y(8.0, 4.0),
+///         // Disable Rapier's built-in gravity (use controller's gravity instead)
+///         GravityScale(0.0),
+///     ));
+/// }
+/// ```
+///
+/// # Rotation Modes
+///
+/// The bundle supports two common configurations:
+///
+/// - [`Rapier2dCharacterBundle::rotation_locked()`]: Locks rotation, suitable for most
+///   platformers where the character should stay upright.
+/// - [`Rapier2dCharacterBundle::new()`]: Allows rotation, enabling the upright torque
+///   system to smoothly correct the character's orientation.
+///
+/// # Defaults
+///
+/// - `rigid_body`: [`RigidBody::Dynamic`] - A dynamic body affected by forces
+/// - `velocity`: Zero velocity
+/// - `external_force`: Zero force (accumulated by controller systems)
+/// - `external_impulse`: Zero impulse (used for jump impulses)
+/// - `locked_axes`: Empty (no axes locked, rotation enabled)
+/// - `damping`: Linear 0.5, Angular 1.0 (provides smooth deceleration)
+/// - `mass_properties`: Default (computed by Rapier from collider)
 #[derive(Bundle, Default)]
 pub struct Rapier2dCharacterBundle {
+    /// The rigid body type. Should typically be [`RigidBody::Dynamic`] for characters.
     pub rigid_body: RigidBody,
+    /// Current linear and angular velocity. Updated by Rapier each physics step.
     pub velocity: Velocity,
+    /// Accumulated forces applied this frame. Character controller systems write to this.
     pub external_force: ExternalForce,
+    /// Accumulated impulses applied this frame. Used for instantaneous velocity changes like jumps.
     pub external_impulse: ExternalImpulse,
+    /// Which axes are locked. Use [`LockedAxes::ROTATION_LOCKED`] for simple platformers.
     pub locked_axes: LockedAxes,
+    /// Damping coefficients for velocity reduction. Higher values = faster deceleration.
     pub damping: Damping,
-    /// Computed mass properties - Rapier will update this based on collider
+    /// Computed mass properties. Rapier updates this based on the entity's collider.
     pub mass_properties: ReadMassProperties,
 }
 
 impl Rapier2dCharacterBundle {
-    /// Create a new character bundle with rotation enabled for upright torque.
+    /// Create a new character bundle with rotation enabled.
+    ///
+    /// This constructor creates a bundle with rotation unlocked, allowing the
+    /// character to rotate freely. This is useful when you want to use the
+    /// **upright torque** system, which applies a corrective torque to keep
+    /// the character oriented at a target angle.
+    ///
+    /// # Defaults
+    ///
+    /// - Rigid body: [`RigidBody::Dynamic`]
+    /// - Linear damping: 0.5
+    /// - Angular damping: 1.0
+    /// - Rotation: Unlocked (can rotate freely)
+    ///
+    /// # When to Use
+    ///
+    /// Use this constructor when:
+    /// - You want characters that can be knocked over but self-right
+    /// - You're implementing physics-based character movement on uneven terrain
+    /// - You want smooth orientation correction using
+    ///   [`ControllerConfig::with_upright_target_angle()`]
+    ///
+    /// For simple platformers where the character should never rotate, use
+    /// [`Rapier2dCharacterBundle::rotation_locked()`] instead.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Character with upright torque (will self-right if knocked over)
+    /// commands.spawn((
+    ///     CharacterController::new(),
+    ///     ControllerConfig::default().with_upright_target_angle(0.0),
+    ///     MovementIntent::default(),
+    ///     Rapier2dCharacterBundle::new(),
+    ///     Collider::capsule_y(8.0, 4.0),
+    ///     GravityScale(0.0),
+    /// ));
+    /// ```
     pub fn new() -> Self {
         Self {
             rigid_body: RigidBody::Dynamic,
@@ -754,6 +852,36 @@ impl Rapier2dCharacterBundle {
     }
 
     /// Create a character bundle with rotation locked.
+    ///
+    /// This is the most common configuration for 2D platformers. The character's
+    /// rotation is locked, ensuring they always remain upright regardless of
+    /// collisions or applied forces.
+    ///
+    /// # Defaults
+    ///
+    /// Same as [`Rapier2dCharacterBundle::new()`] but with:
+    /// - Rotation: Locked via [`LockedAxes::ROTATION_LOCKED`]
+    ///
+    /// # When to Use
+    ///
+    /// Use this constructor for:
+    /// - Traditional 2D platformers
+    /// - Characters that should never rotate or tip over
+    /// - Simpler physics behavior
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Simple platformer character (rotation locked)
+    /// commands.spawn((
+    ///     CharacterController::new(),
+    ///     ControllerConfig::player(),
+    ///     MovementIntent::default(),
+    ///     Rapier2dCharacterBundle::rotation_locked(),
+    ///     Collider::capsule_y(8.0, 4.0),
+    ///     GravityScale(0.0),
+    /// ));
+    /// ```
     pub fn rotation_locked() -> Self {
         Self {
             locked_axes: LockedAxes::ROTATION_LOCKED,
@@ -761,11 +889,64 @@ impl Rapier2dCharacterBundle {
         }
     }
 
+    /// Set the rigid body type for the character.
+    ///
+    /// The rigid body type determines how Rapier simulates the character's physics.
+    /// For most character controllers, [`RigidBody::Dynamic`] is the correct choice
+    /// as it allows the character to be affected by forces, impulses, and collisions.
+    ///
+    /// # Arguments
+    ///
+    /// * `body` - The rigid body type to use. Common options:
+    ///   - [`RigidBody::Dynamic`] (default): Fully simulated, responds to forces
+    ///   - [`RigidBody::KinematicPositionBased`]: Moved by setting position, useful for
+    ///     characters that should ignore physics but still detect collisions
+    ///   - [`RigidBody::KinematicVelocityBased`]: Moved by setting velocity
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Create a kinematic character (useful for cutscenes or scripted movement)
+    /// let bundle = Rapier2dCharacterBundle::rotation_locked()
+    ///     .with_body(RigidBody::KinematicVelocityBased);
+    /// ```
     pub fn with_body(mut self, body: RigidBody) -> Self {
         self.rigid_body = body;
         self
     }
 
+    /// Set the damping coefficients for velocity reduction.
+    ///
+    /// Damping provides a natural deceleration effect, causing the character to slow
+    /// down over time when no forces are applied. This creates smoother, more
+    /// realistic movement.
+    ///
+    /// # Arguments
+    ///
+    /// * `linear` - Linear damping coefficient (default: 0.5). Higher values cause
+    ///   faster deceleration of linear velocity. A value of 0.0 means no damping.
+    ///   Typical values range from 0.0 to 5.0.
+    /// * `angular` - Angular damping coefficient (default: 1.0). Higher values cause
+    ///   faster deceleration of rotational velocity. Only relevant when rotation is
+    ///   not locked.
+    ///
+    /// # Effect on Gameplay
+    ///
+    /// - **Low damping (0.0-0.3)**: Character slides and feels "slippery"
+    /// - **Medium damping (0.3-1.0)**: Balanced, responsive movement
+    /// - **High damping (1.0-5.0)**: Character stops quickly, feels "heavy"
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Create a character with ice-like slippery movement
+    /// let bundle = Rapier2dCharacterBundle::rotation_locked()
+    ///     .with_damping(0.1, 1.0);
+    ///
+    /// // Create a character that stops quickly
+    /// let bundle = Rapier2dCharacterBundle::rotation_locked()
+    ///     .with_damping(3.0, 1.0);
+    /// ```
     pub fn with_damping(mut self, linear: f32, angular: f32) -> Self {
         self.damping = Damping {
             linear_damping: linear,
@@ -774,6 +955,41 @@ impl Rapier2dCharacterBundle {
         self
     }
 
+    /// Set which axes should be locked for the rigid body.
+    ///
+    /// Axis locking prevents the rigid body from moving or rotating along specific
+    /// axes. This is commonly used to restrict 2D characters to the XY plane and
+    /// optionally prevent rotation.
+    ///
+    /// # Arguments
+    ///
+    /// * `axes` - The axes to lock. Common configurations:
+    ///   - [`LockedAxes::empty()`]: No locking (full 2D physics with rotation)
+    ///   - [`LockedAxes::ROTATION_LOCKED`]: Prevents rotation, keeps character upright
+    ///   - [`LockedAxes::TRANSLATION_LOCKED_X`]: Prevents horizontal movement
+    ///   - [`LockedAxes::TRANSLATION_LOCKED_Y`]: Prevents vertical movement
+    ///
+    /// Axes can be combined with bitwise OR (e.g., `LockedAxes::ROTATION_LOCKED |
+    /// LockedAxes::TRANSLATION_LOCKED_Z` for a 2D character).
+    ///
+    /// # Rotation Locking vs Upright Torque
+    ///
+    /// When rotation is locked, the character cannot rotate at all. Alternatively,
+    /// if you want the character to naturally self-right (useful for characters that
+    /// can be knocked over but recover), leave rotation unlocked and configure the
+    /// upright torque system via [`ControllerConfig::with_upright_target_angle()`].
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Lock rotation for a simple platformer character
+    /// let bundle = Rapier2dCharacterBundle::new()
+    ///     .with_locked_axes(LockedAxes::ROTATION_LOCKED);
+    ///
+    /// // Lock both rotation and vertical translation (for a horizontal-only character)
+    /// let bundle = Rapier2dCharacterBundle::new()
+    ///     .with_locked_axes(LockedAxes::ROTATION_LOCKED | LockedAxes::TRANSLATION_LOCKED_Y);
+    /// ```
     pub fn with_locked_axes(mut self, axes: LockedAxes) -> Self {
         self.locked_axes = axes;
         self
