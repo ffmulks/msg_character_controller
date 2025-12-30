@@ -597,9 +597,18 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
             let new_slope_speed = (current_slope_speed + change) * friction_factor;
             let slope_velocity_delta = new_slope_speed - current_slope_speed;
 
+            // Scale impulse so horizontal component matches flat-ground behavior
+            // This gives a proportionally stronger vertical component on slopes,
+            // helping the character follow the slope surface when walking downhill
+            let horizontal_scale = slope_tangent.dot(right);
+            let scaled_slope_delta = if horizontal_scale.abs() > 0.001 {
+                slope_velocity_delta / horizontal_scale
+            } else {
+                slope_velocity_delta
+            };
+
             // Apply impulse along slope tangent: I = m * dv
-            // Only the walking impulse is rotated - external velocity and spring system are unaffected
-            let walk_impulse = slope_tangent * slope_velocity_delta * mass;
+            let walk_impulse = slope_tangent * scaled_slope_delta * mass;
             B::apply_impulse(world, entity, walk_impulse);
         } else {
             // AIRBORNE: Use world-space horizontal axis
@@ -769,9 +778,18 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
             let new_slope_speed = (current_slope_speed + change) * friction_factor;
             let slope_velocity_delta = new_slope_speed - current_slope_speed;
 
+            // Scale impulse so horizontal component matches flat-ground behavior
+            // This gives a proportionally stronger vertical component on slopes,
+            // helping the character follow the slope surface when walking downhill
+            let horizontal_scale = slope_tangent.dot(right);
+            let scaled_slope_delta = if horizontal_scale.abs() > 0.001 {
+                slope_velocity_delta / horizontal_scale
+            } else {
+                slope_velocity_delta
+            };
+
             // Apply impulse along slope tangent: I = m * dv
-            // Only the walking impulse is rotated - external velocity and spring system are unaffected
-            let walk_impulse = slope_tangent * slope_velocity_delta * mass;
+            let walk_impulse = slope_tangent * scaled_slope_delta * mass;
             B::apply_impulse(world, entity, walk_impulse);
         } else {
             // AIRBORNE: Use world-space horizontal axis
