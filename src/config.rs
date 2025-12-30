@@ -106,11 +106,23 @@ pub struct CharacterController {
     #[reflect(ignore)]
     pub jumped_timer: Timer,
 
-    /// Timer for applying extra fall gravity after jump cancellation.
-    /// When extra fall gravity is triggered, this timer is reset and extra
+    /// Timer for applying fall gravity after jump cancellation.
+    /// When fall gravity is triggered, this timer is reset and fall
     /// gravity is applied while the timer has not finished.
     #[reflect(ignore)]
-    pub extra_gravity_timer: Timer,
+    pub fall_gravity_timer: Timer,
+
+    /// Timer for blocking movement toward the wall after a wall jump.
+    /// When a wall jump occurs, this timer is reset. While active, movement
+    /// toward the wall (opposing the jump direction) is blocked.
+    #[reflect(ignore)]
+    pub wall_jump_movement_block_timer: Timer,
+
+    /// The direction that is blocked during wall jump movement blocking.
+    /// Positive = block rightward movement (jumped from right wall)
+    /// Negative = block leftward movement (jumped from left wall)
+    /// Zero = no blocking
+    pub wall_jump_blocked_direction: f32,
 
     // === Intent State (set by evaluate_intent, used by force systems) ===
     /// Whether the character intends to propel upward this frame.
@@ -120,7 +132,7 @@ pub struct CharacterController {
 
     // === Gravity ===
     /// Gravity vector affecting this character.
-    /// Used for floating spring, extra fall gravity, and jump countering.
+    /// Used for floating spring, fall gravity, and jump countering.
     pub gravity: Vec2,
 
     // === Force Accumulation (internal) ===
@@ -174,9 +186,14 @@ impl Default for CharacterController {
             // Jumped timer starts finished (no recent jump)
             // Duration is set by the system based on config.jump_cancel_window
             jumped_timer: Timer::new(Duration::ZERO, TimerMode::Once),
-            // Extra gravity timer starts finished (no active extra gravity)
-            // Duration is set by the system based on config.extra_gravity_duration
-            extra_gravity_timer: Timer::new(Duration::ZERO, TimerMode::Once),
+            // Fall gravity timer starts finished (no active fall gravity)
+            // Duration is set by the system based on config.fall_gravity_duration
+            fall_gravity_timer: Timer::new(Duration::ZERO, TimerMode::Once),
+            // Wall jump movement block timer starts finished (no active blocking)
+            // Duration is set by the system based on config.wall_jump_movement_block_duration
+            wall_jump_movement_block_timer: Timer::new(Duration::ZERO, TimerMode::Once),
+            // No direction blocked initially
+            wall_jump_blocked_direction: 0.0,
             // Intent state
             intends_upward_propulsion: false,
             // Gravity
@@ -495,20 +512,53 @@ impl CharacterController {
         !self.jumped_timer.finished()
     }
 
-    /// Trigger extra fall gravity for the specified duration.
-    /// This starts the extra gravity timer.
-    pub fn trigger_extra_fall_gravity(&mut self, extra_gravity_duration: f32) {
-        if extra_gravity_duration > 0.0 {
-            self.extra_gravity_timer
-                .set_duration(Duration::from_secs_f32(extra_gravity_duration));
-            self.extra_gravity_timer.reset();
+    /// Trigger fall gravity for the specified duration.
+    /// This starts the fall gravity timer.
+    pub fn trigger_fall_gravity(&mut self, fall_gravity_duration: f32) {
+        if fall_gravity_duration > 0.0 {
+            self.fall_gravity_timer
+                .set_duration(Duration::from_secs_f32(fall_gravity_duration));
+            self.fall_gravity_timer.reset();
         }
     }
 
-    /// Check if extra fall gravity is currently active.
-    /// Returns true if extra gravity should be applied.
-    pub fn extra_fall_gravity_active(&self) -> bool {
-        !self.extra_gravity_timer.finished()
+    /// Check if fall gravity is currently active.
+    /// Returns true if fall gravity should be applied.
+    pub fn fall_gravity_active(&self) -> bool {
+        !self.fall_gravity_timer.finished()
+    }
+
+    // === Wall Jump Movement Block Methods ===
+
+    /// Record a wall jump movement block event.
+    /// This starts the wall jump movement block timer and stores the blocked direction.
+    ///
+    /// # Arguments
+    /// * `duration` - How long to block movement (in seconds)
+    /// * `blocked_direction` - The direction to block: positive = rightward, negative = leftward
+    pub fn record_wall_jump_movement_block(&mut self, duration: f32, blocked_direction: f32) {
+        if duration > 0.0 {
+            self.wall_jump_movement_block_timer
+                .set_duration(Duration::from_secs_f32(duration));
+            self.wall_jump_movement_block_timer.reset();
+            self.wall_jump_blocked_direction = blocked_direction;
+        }
+    }
+
+    /// Check if wall jump movement blocking is currently active.
+    /// Returns true if movement toward the wall should be blocked.
+    pub fn wall_jump_movement_blocked(&self) -> bool {
+        !self.wall_jump_movement_block_timer.finished()
+    }
+
+    /// Get the direction that is currently blocked by wall jump movement blocking.
+    /// Returns positive for rightward, negative for leftward, or 0 if not blocked.
+    pub fn get_wall_jump_blocked_direction(&self) -> f32 {
+        if self.wall_jump_movement_blocked() {
+            self.wall_jump_blocked_direction
+        } else {
+            0.0
+        }
     }
 
     // === Force Accumulation Methods ===
@@ -622,6 +672,10 @@ pub struct ControllerConfig {
     /// When false, movement intent toward a detected wall is rejected.
     pub wall_clinging: bool,
 
+    /// Friction applied when clinging to a wall (0.0-1.0).
+    /// Higher values make the character stick more firmly to the wall.
+    pub wall_clinging_friction: f32,
+
     // === Slope Settings ===
     /// Maximum slope angle the character can walk up (radians).
     pub max_slope_angle: f32,
@@ -659,10 +713,10 @@ pub struct ControllerConfig {
     /// Jump buffer duration in seconds.
     pub jump_buffer_time: f32,
 
-    /// Extra gravity multiplier when jump is cancelled early.
-    /// This multiplier is applied to gravity during the extra_gravity_duration
+    /// Gravity multiplier when jump is cancelled early.
+    /// This multiplier is applied to gravity during the fall_gravity_duration
     /// window after the player releases the jump button or crosses the zenith.
-    pub extra_fall_gravity: f32,
+    pub fall_gravity: f32,
 
     // === Wall Jump Settings ===
     /// Whether wall jumping is enabled.
@@ -673,14 +727,26 @@ pub struct ControllerConfig {
     /// 0 = straight up, PI/4 (45°) = diagonal.
     /// The jump direction is angled away from the wall.
     pub wall_jump_angle: f32,
+
+    /// Duration (seconds) after a wall jump during which movement toward the wall
+    /// is blocked. This helps the player jump away from the wall correctly by
+    /// preventing immediate movement back toward it.
+    /// Default is 0.15 seconds (150ms).
+    pub wall_jump_movement_block_duration: f32,
+
+    /// How much downward velocity should be compensated on wall jumps (0.0-1.0).
+    /// 0.0 = no compensation (wall jump adds to existing velocity)
+    /// 1.0 = full compensation (wall jump cancels all downward velocity first)
+    pub wall_jump_velocity_compensation: f32,
+
     /// Duration (seconds) after jumping during which the jump can be cancelled.
     /// If the player releases the jump button within this window OR crosses the
-    /// zenith (starts moving downward), extra fall gravity will be triggered.
+    /// zenith (starts moving downward), fall gravity will be triggered.
     pub jump_cancel_window: f32,
 
-    /// Duration (seconds) for which extra fall gravity is applied after cancellation.
-    /// During this time, gravity is multiplied by extra_fall_gravity.
-    pub extra_gravity_duration: f32,
+    /// Duration (seconds) for which fall gravity is applied after cancellation.
+    /// During this time, gravity is multiplied by fall_gravity.
+    pub fall_gravity_duration: f32,
 
     // === Upright Torque Settings ===
     /// Whether to apply torque to keep the character upright.
@@ -727,6 +793,7 @@ impl Default for ControllerConfig {
             friction: 0.1,
             air_control: 0.3,
             wall_clinging: true, // Allow wall clinging by default
+            wall_clinging_friction: 0.5, // Moderate wall friction by default
 
             // Slope settings
             max_slope_angle: std::f32::consts::FRAC_PI_3, // 60 degrees
@@ -744,13 +811,15 @@ impl Default for ControllerConfig {
             jump_speed: 120.0,
             coyote_time: 0.15,
             jump_buffer_time: 0.1,
-            extra_fall_gravity: 2.0,       // 2x gravity when jump is cancelled
+            fall_gravity: 2.0,             // 2x gravity when jump is cancelled
             jump_cancel_window: 2.0,       // 2 seconds to cancel jump
-            extra_gravity_duration: 0.3,   // 300ms of extra gravity
+            fall_gravity_duration: 0.3,    // 300ms of fall gravity
 
             // Wall jump settings
             wall_jumping: false,
             wall_jump_angle: std::f32::consts::FRAC_PI_4, // 45 degrees
+            wall_jump_movement_block_duration: 0.15, // 150ms
+            wall_jump_velocity_compensation: 0.5, // 50% downward velocity compensation
 
             // Upright torque settings
             upright_torque_enabled: true,
@@ -871,9 +940,9 @@ impl ControllerConfig {
         self
     }
 
-    /// Builder: set extra fall gravity multiplier.
-    pub fn with_extra_fall_gravity(mut self, multiplier: f32) -> Self {
-        self.extra_fall_gravity = multiplier;
+    /// Builder: set fall gravity multiplier.
+    pub fn with_fall_gravity(mut self, multiplier: f32) -> Self {
+        self.fall_gravity = multiplier;
         self
     }
 
@@ -884,10 +953,10 @@ impl ControllerConfig {
         self
     }
 
-    /// Builder: set extra gravity duration.
-    /// Duration for which extra fall gravity is applied after cancellation.
-    pub fn with_extra_gravity_duration(mut self, duration: f32) -> Self {
-        self.extra_gravity_duration = duration;
+    /// Builder: set fall gravity duration.
+    /// Duration for which fall gravity is applied after cancellation.
+    pub fn with_fall_gravity_duration(mut self, duration: f32) -> Self {
+        self.fall_gravity_duration = duration;
         self
     }
 
@@ -928,6 +997,20 @@ impl ControllerConfig {
     /// 0 = straight up, PI/4 (45°) = diagonal.
     pub fn with_wall_jump_angle(mut self, angle: f32) -> Self {
         self.wall_jump_angle = angle;
+        self
+    }
+
+    /// Builder: set wall jump movement block duration.
+    /// Duration (seconds) after a wall jump during which movement toward the wall is blocked.
+    pub fn with_wall_jump_movement_block_duration(mut self, duration: f32) -> Self {
+        self.wall_jump_movement_block_duration = duration;
+        self
+    }
+
+    /// Builder: set wall jump velocity compensation (0.0-1.0).
+    /// Controls how much downward velocity is cancelled before a wall jump.
+    pub fn with_wall_jump_velocity_compensation(mut self, compensation: f32) -> Self {
+        self.wall_jump_velocity_compensation = compensation.clamp(0.0, 1.0);
         self
     }
 

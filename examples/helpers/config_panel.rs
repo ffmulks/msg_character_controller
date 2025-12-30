@@ -165,6 +165,16 @@ pub fn movement_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             );
         });
         ui.checkbox(&mut config.wall_clinging, "Wall Clinging");
+        ui.add_enabled_ui(config.wall_clinging, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Wall Clinging Friction:");
+                ui.add(
+                    egui::DragValue::new(&mut config.wall_clinging_friction)
+                        .speed(0.01)
+                        .range(0.0..=1.0),
+                );
+            });
+        });
     });
 }
 
@@ -278,9 +288,9 @@ pub fn jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             );
         });
         ui.horizontal(|ui| {
-            ui.label("Extra Fall Gravity:");
+            ui.label("Fall Gravity:");
             ui.add(
-                egui::DragValue::new(&mut config.extra_fall_gravity)
+                egui::DragValue::new(&mut config.fall_gravity)
                     .speed(0.1)
                     .range(0.0..=100.0),
             );
@@ -316,6 +326,32 @@ pub fn wall_jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
                 }
             });
             ui.label("(0° = straight up, 45° = diagonal)");
+
+            // Wall jump movement block duration (displayed in ms for user-friendliness)
+            let mut block_duration_ms = config.wall_jump_movement_block_duration * 1000.0;
+            ui.horizontal(|ui| {
+                ui.label("Movement Block (ms):");
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut block_duration_ms)
+                            .speed(10.0)
+                            .range(0.0..=1000.0),
+                    )
+                    .changed()
+                {
+                    config.wall_jump_movement_block_duration = block_duration_ms / 1000.0;
+                }
+            });
+            ui.label("(blocks movement toward wall after jump)");
+
+            ui.horizontal(|ui| {
+                ui.label("Velocity Compensation:");
+                ui.add(
+                    egui::Slider::new(&mut config.wall_jump_velocity_compensation, 0.0..=1.0)
+                        .fixed_decimals(2),
+                );
+            });
+            ui.label("(0 = none, 1 = full downward velocity cancel)");
         });
     });
 }
