@@ -40,7 +40,7 @@ const PLANET_CENTER: Vec2 = Vec2::ZERO;
 const PLATFORM_WIDTH: f32 = 80.0;
 const PLATFORM_HEIGHT: f32 = 15.0;
 
-const GRAVITY_STRENGTH: f32 = 600.0;
+const GRAVITY_STRENGTH: f32 = 100.0;
 
 // ==================== Components ====================
 

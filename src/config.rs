@@ -899,7 +899,7 @@ impl Default for ControllerConfig {
             // Spring settings
             spring_strength: 300.0,
             spring_damping: 13.0,
-            spring_max_force: None,
+            spring_max_force: Some(3000.0),
             spring_max_velocity: None,
             jump_spring_filter_duration: 0.15, // duration to suppress spring after jumping
 
@@ -911,7 +911,7 @@ impl Default for ControllerConfig {
             // Flying settings
             fly_max_speed: 150.0,                 // Same as max_speed by default
             fly_vertical_speed_ratio: 0.6,        // Same speed vertical and horizontal
-            fly_acceleration: 80.0,               // Same as acceleration by default
+            fly_acceleration: 500.0,               // Same as acceleration by default
             fly_vertical_acceleration_ratio: 0.6, // Same acceleration vertical and horizontal
             fly_gravity_compensation: 0.05,       // Full gravity compensation by default
             wall_clinging: true,                  // Allow wall clinging by default
@@ -931,7 +931,7 @@ impl Default for ControllerConfig {
             ceiling_cast_width: 12.0,
 
             // Jump settings
-            jump_speed: 75.0,
+            jump_speed: 120.0,
             coyote_time: 0.15,
             jump_buffer_time: 0.1,
             fall_gravity: 3.0,       // gravity multiplier when jump is cancelled
