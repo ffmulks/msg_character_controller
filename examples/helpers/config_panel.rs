@@ -321,6 +321,23 @@ pub fn jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             }
         });
         ui.label("(blocks fall gravity trigger)");
+
+        // Max ascent duration (displayed in ms for user-friendliness)
+        let mut max_ascent_ms = config.jump_max_ascent_duration * 1000.0;
+        ui.horizontal(|ui| {
+            ui.label("Max Ascent (ms):");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut max_ascent_ms)
+                        .speed(10.0)
+                        .range(0.0..=2000.0),
+                )
+                .changed()
+            {
+                config.jump_max_ascent_duration = max_ascent_ms / 1000.0;
+            }
+        });
+        ui.label("(forces fall gravity after duration, 0 = disabled)");
     });
 }
 
