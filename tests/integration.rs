@@ -563,10 +563,10 @@ mod movement {
 
         // PROOF: Jump should apply positive Y velocity change
         // The impulse is scaled by actual_mass, and Rapier applies delta_v = impulse / mass
-        // So delta_v = (jump_speed * actual_mass) / actual_mass = jump_speed = 300
+        // So delta_v = (jump_speed * actual_mass) / actual_mass = jump_speed = 90
         assert!(
-            vel_after.y > vel_before.y + 100.0,
-            "Jump should apply significant upward velocity (~300 units/s)"
+            vel_after.y > vel_before.y + 50.0,
+            "Jump should apply significant upward velocity (~90 units/s)"
         );
     }
 }
