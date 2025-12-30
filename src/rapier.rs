@@ -424,6 +424,10 @@ fn rapier_ground_detection(
 /// This function casts a shapecast downward from a position in front of the character
 /// (in the direction of movement intent) to detect steps.
 ///
+/// The cast origin is positioned at `max_climb_height` above the player's feet (bottom
+/// of collider), and casts downward to the feet level. This allows detecting steps
+/// even when the stair surface would be above the player's center.
+///
 /// **Important**: Uses the "ideal up" direction derived from gravity, NOT from
 /// the actor's Transform rotation.
 ///
@@ -454,15 +458,20 @@ fn check_stair_step(
 
     let move_dir = right * walk_direction.signum();
 
-    // Calculate the cast origin: position + move_dir * (radius + stair_cast_offset)
-    // This places the cast just outside the collider in the movement direction
-    let cast_offset = collider_radius + config.stair_cast_offset;
-    let cast_origin = position + move_dir * cast_offset;
+    // Calculate the cast origin:
+    // - Horizontal: offset in front of the player by (radius + stair_cast_offset)
+    // - Vertical: at max_climb_height above the player's feet (bottom of collider)
+    //   - Feet are at: position + down * collider_bottom_offset
+    //   - Origin should be: feet + up * max_climb_height
+    //     = position + down * collider_bottom_offset + up * max_climb_height
+    //     = position + up * (max_climb_height - collider_bottom_offset)
+    //   This can place the origin above player center when max_climb_height > collider_bottom_offset
+    let horizontal_offset = collider_radius + config.stair_cast_offset;
+    let vertical_offset = up * (config.max_climb_height - controller.collider_bottom_offset);
+    let cast_origin = position + move_dir * horizontal_offset + vertical_offset;
 
-    // Cast downward from this position to detect the ground in front
-    // Cast distance should be enough to detect steps up to max_climb_height below our current position
-    // plus some buffer for floating height variations
-    let cast_distance = config.max_climb_height + float_height + config.stair_tolerance + 2.0;
+    // Cast distance: from origin (at max_climb_height above feet) down to the feet level
+    let cast_distance = config.max_climb_height;
 
     // Use shapecast for more reliable detection
     // Shape rotation based on ideal up direction from gravity
@@ -486,12 +495,13 @@ fn check_stair_step(
     let step_surface_point = cast_origin + down * stair_hit.distance;
 
     // Get the current ground level under the character (from center position)
-    // We need to cast down from our current position to get the floor distance
+    // Use a longer cast distance here to ensure we detect the ground below
+    let ground_cast_distance = config.max_climb_height + float_height + config.stair_tolerance + 2.0;
     let current_ground_hit = rapier_shapecast(
         context,
         position,
         down,
-        cast_distance,
+        ground_cast_distance,
         config.stair_cast_width,
         0.0, // height not used for ground detection
         shape_rotation,
@@ -507,11 +517,12 @@ fn check_stair_step(
     // The step is at cast_origin + down * stair_hit.distance
     // Our ground is at position + down * current_ground_distance
     // The height difference in the "up" direction:
-    let step_height_in_up = (step_surface_point - (position + down * current_ground_distance)).dot(up);
+    let current_ground_point = position + down * current_ground_distance;
+    let step_height_in_up = (step_surface_point - current_ground_point).dot(up);
 
-    // step_height_in_up will be positive if the step is above our current ground
-    // (since up points up, and step surface is higher than current ground)
-    let step_height = -step_height_in_up; // Negate because if step is above, dot product is negative
+    // step_height is positive when the step surface is above current ground
+    // (the dot product with up is positive when step is higher)
+    let step_height = step_height_in_up;
 
     // Check if the step height is within climbable range:
     // - Higher than float_height + tolerance (needs climbing, not just spring)
