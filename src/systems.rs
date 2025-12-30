@@ -1069,7 +1069,7 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
 /// Jump requests are consumed directly from MovementIntent.
 ///
 /// Jump direction depends on the jump type stored in last_jump_type:
-/// - Ground: Jump along ground normal (or ideal up if using coyote time)
+/// - Ground: Jump along ideal up (not affected by slope)
 /// - LeftWall: Jump diagonally up-right at configured angle
 /// - RightWall: Jump diagonally up-left at configured angle
 ///
@@ -1122,12 +1122,8 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
         // Calculate jump direction based on jump type
         let jump_direction = match controller.last_jump_type {
             JumpType::Ground => {
-                // Normal ground jump: use ground normal or ideal up
-                if controller.ground_detected() {
-                    controller.ground_normal()
-                } else {
-                    controller.ideal_up()
-                }
+                // Ground jump: always use ideal up, not affected by slope
+                controller.ideal_up()
             }
             JumpType::LeftWall => {
                 // Wall jump from left wall: jump up-right (away from wall)
