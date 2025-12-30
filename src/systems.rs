@@ -363,7 +363,17 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
 
         let is_grounded = controller.is_grounded(&config);
 
-        let desired_walk_speed = intent.effective_walk() * config.max_speed;
+        // Check for wall clinging rejection
+        let effective_walk = intent.effective_walk();
+        let walk_blocked = !config.wall_clinging
+            && ((effective_walk > 0.0 && controller.touching_right_wall())
+                || (effective_walk < 0.0 && controller.touching_left_wall()));
+
+        let desired_walk_speed = if walk_blocked {
+            0.0
+        } else {
+            effective_walk * config.max_speed
+        };
         let walk_accel = if is_grounded {
             config.acceleration
         } else {

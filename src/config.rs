@@ -539,6 +539,11 @@ pub struct ControllerConfig {
     /// Air control multiplier (0.0-1.0).
     pub air_control: f32,
 
+    /// Whether the character can cling to walls by walking into them.
+    /// When true (default), walking into a wall applies movement impulse normally.
+    /// When false, movement intent toward a detected wall is rejected.
+    pub wall_clinging: bool,
+
     // === Slope Settings ===
     /// Maximum slope angle the character can walk up (radians).
     pub max_slope_angle: f32,
@@ -623,6 +628,7 @@ impl Default for ControllerConfig {
             acceleration: 800.0,
             friction: 0.1,
             air_control: 0.3,
+            wall_clinging: true, // Allow wall clinging by default
 
             // Slope settings
             max_slope_angle: std::f32::consts::FRAC_PI_3, // 60 degrees
