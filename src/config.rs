@@ -308,11 +308,11 @@ impl CharacterController {
         self.stair_config.as_ref().is_some_and(|c| c.enabled)
     }
 
-    /// Check if grounded (floor detected within float_height + ground_tolerance).
+    /// Check if grounded (floor detected within float_height + grounding_distance).
     pub fn is_grounded(&self, config: &ControllerConfig) -> bool {
         if let Some(ref floor) = self.floor {
             let riding_height = self.riding_height(config);
-            floor.distance <= riding_height + config.ground_tolerance
+            floor.distance <= riding_height + config.grounding_distance
         } else {
             false
         }
@@ -425,12 +425,12 @@ impl CharacterController {
 
     /// Check if within spring active range.
     /// Active when:
-    /// - Distance <= float_height + ground_tolerance (riding range)
+    /// - Distance <= float_height + grounding_distance (riding range)
     /// - Distance > capsule_half_height - EPSILON (physics collision threshold)
     pub fn in_spring_range(&self, config: &ControllerConfig) -> bool {
         if let Some(ref floor) = self.floor {
             let riding_height = self.riding_height(config);
-            let max_range = riding_height + config.ground_tolerance;
+            let max_range = riding_height + config.grounding_distance;
             let min_range = self.collider_bottom_offset - f32::EPSILON;
             floor.distance <= max_range && floor.distance > min_range
         } else {
@@ -619,13 +619,11 @@ pub struct ControllerConfig {
     /// 1 pixel above the ground.
     pub float_height: f32,
 
-    /// Tolerance below float_height where the spring is still active.
-    /// The spring will restore riding_height when within this range.
-    /// Total grounded range is: riding_height + ground_tolerance.
-    pub ground_tolerance: f32,
-
-    /// Distance for wall and ceiling detection (extends from collider surface).
+    /// Distance for ground, wall, and ceiling detection.
+    /// This is the tolerance below float_height where the spring is still active,
+    /// and extends from the collider surface for wall/ceiling detection.
     /// Also used as a buffer zone above riding_height where grounding_strength applies.
+    /// Total grounded range is: riding_height + grounding_distance.
     pub grounding_distance: f32,
 
     /// Multiplier for downward spring force when character is within grounding_distance
@@ -775,9 +773,8 @@ impl Default for ControllerConfig {
     fn default() -> Self {
         Self {
             // Float settings
-            float_height: 1.0,     // 1 pixel gap between collider bottom and ground
-            ground_tolerance: 2.0, // tolerance for spring activation
-            grounding_distance: 2.0, // distance for wall/ceiling detection and grounding buffer
+            float_height: 1.0,       // 1 pixel gap between collider bottom and ground
+            grounding_distance: 2.0, // tolerance for ground/wall/ceiling detection
             grounding_strength: 1.0, // multiplier for downward spring force (1.0 = no extra force)
 
             // Spring settings
@@ -1014,12 +1011,6 @@ impl ControllerConfig {
         self
     }
 
-    /// Builder: set ground tolerance.
-    pub fn with_ground_tolerance(mut self, tolerance: f32) -> Self {
-        self.ground_tolerance = tolerance;
-        self
-    }
-
     /// Builder: set grounding distance.
     pub fn with_grounding_distance(mut self, distance: f32) -> Self {
         self.grounding_distance = distance;
@@ -1171,7 +1162,7 @@ mod tests {
 
         // Floor detected at edge of tolerance
         controller.floor = Some(CollisionData::new(
-            riding_height + config.ground_tolerance,
+            riding_height + config.grounding_distance,
             Vec2::Y,
             Vec2::ZERO,
             None,
@@ -1180,7 +1171,7 @@ mod tests {
 
         // Floor detected beyond tolerance
         controller.floor = Some(CollisionData::new(
-            riding_height + config.ground_tolerance + 1.0,
+            riding_height + config.grounding_distance + 1.0,
             Vec2::Y,
             Vec2::ZERO,
             None,

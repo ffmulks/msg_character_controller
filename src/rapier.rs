@@ -315,8 +315,8 @@ use crate::intent::MovementIntent;
 
 /// Rapier-specific ground detection system using shapecast.
 ///
-/// Floor raycast covers: riding_height + ground_tolerance
-/// (which is float_height + capsule_half_height + ground_tolerance)
+/// Floor raycast covers: riding_height + grounding_distance
+/// (which is float_height + capsule_half_height + grounding_distance)
 ///
 /// **Important**: Raycasts use the "ideal up" direction derived from gravity,
 /// NOT from the actor's Transform rotation. This ensures ground detection
@@ -364,10 +364,10 @@ fn rapier_ground_detection(
         let collision_groups_tuple = collision_groups.map(|cg| (cg.memberships, cg.filters));
 
         // Calculate ground cast length:
-        // riding_height + ground_tolerance = float_height + capsule_half_height + ground_tolerance
+        // riding_height + grounding_distance = float_height + capsule_half_height + grounding_distance
         // Add a small buffer (1.0) to avoid edge cases with floating point precision
         let riding_height = controller.riding_height(config);
-        let ground_cast_length = riding_height + config.ground_tolerance + 1.0;
+        let ground_cast_length = riding_height + config.grounding_distance + 1.0;
 
         // Compute rotation angle for the shape to align with ideal up direction (from gravity).
         // This ensures the shapecast shape is oriented correctly in world space.
