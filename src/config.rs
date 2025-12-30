@@ -84,10 +84,6 @@ pub struct CharacterController {
     /// Coyote time is valid while the timer has not finished.
     #[reflect(ignore)]
     pub coyote_timer: Timer,
-    /// Timer tracking time since last wall contact (for wall jump coyote time).
-    /// When touching a wall, this timer is reset. When not touching, it ticks.
-    #[reflect(ignore)]
-    pub wall_coyote_timer: Timer,
     /// The type of jump that should be performed based on last contact.
     /// Updated by wall contact detection system. Used by apply_jump to determine
     /// jump direction. Ground contact takes priority over wall contact.
@@ -156,8 +152,6 @@ impl Default for CharacterController {
             // Coyote timer starts finished (not grounded) - will be reset when grounded
             // Duration is set by the system based on config.coyote_time
             coyote_timer: Timer::new(Duration::ZERO, TimerMode::Once),
-            // Wall coyote timer starts finished (not touching wall)
-            wall_coyote_timer: Timer::new(Duration::ZERO, TimerMode::Once),
             // Default to ground jump type
             last_jump_type: JumpType::Ground,
             // Stair climbing state
@@ -460,43 +454,9 @@ impl CharacterController {
     }
 
     /// Check if within coyote time window.
-    /// Returns true if the character can still jump after leaving ground.
+    /// Returns true if the character can still jump after leaving ground or wall.
     pub fn in_coyote_time(&self) -> bool {
         !self.coyote_timer.finished()
-    }
-
-    /// Tick the wall coyote timer (call when not touching a wall).
-    pub fn tick_wall_coyote_timer(&mut self, delta: Duration) {
-        self.wall_coyote_timer.tick(delta);
-    }
-
-    /// Reset the wall coyote timer (call when touching a wall).
-    pub fn reset_wall_coyote_timer(&mut self, coyote_time: f32) {
-        if coyote_time > 0.0 {
-            self.wall_coyote_timer
-                .set_duration(Duration::from_secs_f32(coyote_time));
-            self.wall_coyote_timer.reset();
-        }
-    }
-
-    /// Check if within wall coyote time window.
-    /// Returns true if the character can still wall jump after leaving wall.
-    pub fn in_wall_coyote_time(&self) -> bool {
-        !self.wall_coyote_timer.finished()
-    }
-
-    /// Check if a wall jump is possible (touching wall or within wall coyote time).
-    /// Only returns true if wall jumping is enabled and last_jump_type is a wall type.
-    pub fn can_wall_jump(&self, config: &ControllerConfig) -> bool {
-        if !config.wall_jumping {
-            return false;
-        }
-        match self.last_jump_type {
-            JumpType::LeftWall | JumpType::RightWall => {
-                self.touching_wall() || self.in_wall_coyote_time()
-            }
-            JumpType::Ground => false,
-        }
     }
 
     // === Force Accumulation Methods ===

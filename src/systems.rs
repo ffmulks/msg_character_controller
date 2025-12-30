@@ -67,8 +67,7 @@ pub fn expire_jump_requests(mut query: Query<&mut MovementIntent>) {
 /// This system runs in IntentEvaluation phase before intent is evaluated,
 /// ensuring timers are current when checking jump validity.
 ///
-/// - Coyote timer: Reset when grounded, tick when airborne
-/// - Wall coyote timer: Reset when touching wall, tick when not
+/// - Coyote timer: Reset when grounded OR touching wall (if wall jumping enabled)
 /// - Jump spring filter timer: Always tick
 pub fn update_timers(
     time: Res<Time<Fixed>>,
@@ -77,20 +76,15 @@ pub fn update_timers(
     let delta = Duration::from_secs_f64(time.delta_secs_f64());
 
     for (mut controller, config) in &mut query {
-        // Update coyote timer
-        if controller.is_grounded(config) {
+        // Check if we have valid contact for coyote time
+        let is_grounded = controller.is_grounded(config);
+        let has_wall_contact = config.wall_jumping && controller.touching_wall();
+
+        // Reset coyote timer when we have any valid contact
+        if is_grounded || has_wall_contact {
             controller.reset_coyote_timer(config.coyote_time);
         } else {
             controller.tick_coyote_timer(delta);
-        }
-
-        // Update wall coyote timer (only if wall jumping is enabled)
-        if config.wall_jumping {
-            if controller.touching_wall() {
-                controller.reset_wall_coyote_timer(config.coyote_time);
-            } else {
-                controller.tick_wall_coyote_timer(delta);
-            }
         }
 
         // Tick the jump spring filter timer
@@ -164,15 +158,18 @@ pub fn evaluate_intent<B: CharacterPhysicsBackend>(
 
         // Check if intending to jump (has valid jump request and can jump)
         // Expired requests are already removed by expire_jump_requests
-        let can_ground_jump = controller.is_grounded(config) || controller.in_coyote_time();
-        let can_wall_jump = config.wall_jumping
-            && matches!(
-                controller.last_jump_type,
-                JumpType::LeftWall | JumpType::RightWall
-            )
-            && (controller.touching_wall() || controller.in_wall_coyote_time());
+        // Can jump if: grounded, touching wall (with wall jumping), or within coyote time
+        let has_contact = controller.is_grounded(config)
+            || (config.wall_jumping && controller.touching_wall());
+        let can_jump = has_contact || controller.in_coyote_time();
 
-        let intends_jump = intent.jump_request.is_some() && (can_ground_jump || can_wall_jump);
+        // For wall jumps via coyote time, also check that last_jump_type is a wall type
+        let valid_jump_type = match controller.last_jump_type {
+            JumpType::Ground => true,
+            JumpType::LeftWall | JumpType::RightWall => config.wall_jumping,
+        };
+
+        let intends_jump = intent.jump_request.is_some() && can_jump && valid_jump_type;
 
         // Check if intending to fly upward
         let intends_fly_up = intent.fly > 0.001;
@@ -667,10 +664,10 @@ pub fn apply_movement<B: CharacterPhysicsBackend>(world: &mut World) {
 /// Apply jump impulse when requested.
 ///
 /// Jumping requires being grounded, touching a wall (with wall jumping enabled),
-/// or within the respective coyote time window.
+/// or within coyote time (which covers both ground and wall contact).
 /// Jump requests are consumed directly from MovementIntent.
 ///
-/// Jump direction depends on the jump type:
+/// Jump direction depends on the jump type stored in last_jump_type:
 /// - Ground: Jump along ground normal (or ideal up if using coyote time)
 /// - LeftWall: Jump diagonally up-right at configured angle
 /// - RightWall: Jump diagonally up-left at configured angle
@@ -696,18 +693,18 @@ pub fn apply_jump<B: CharacterPhysicsBackend>(world: &mut World) {
                 return None;
             }
 
-            // Check ground jump possibility
-            let can_ground_jump = controller.is_grounded(config) || controller.in_coyote_time();
+            // Can jump if: grounded, touching wall (with wall jumping), or within coyote time
+            let has_contact = controller.is_grounded(config)
+                || (config.wall_jumping && controller.touching_wall());
+            let can_jump = has_contact || controller.in_coyote_time();
 
-            // Check wall jump possibility
-            let can_wall_jump = config.wall_jumping
-                && matches!(
-                    controller.last_jump_type,
-                    JumpType::LeftWall | JumpType::RightWall
-                )
-                && (controller.touching_wall() || controller.in_wall_coyote_time());
+            // For wall jumps via coyote time, also check that last_jump_type is valid
+            let valid_jump_type = match controller.last_jump_type {
+                JumpType::Ground => true,
+                JumpType::LeftWall | JumpType::RightWall => config.wall_jumping,
+            };
 
-            if can_ground_jump || can_wall_jump {
+            if can_jump && valid_jump_type {
                 Some((e, *config, controller.clone()))
             } else {
                 None
