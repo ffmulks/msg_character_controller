@@ -167,9 +167,9 @@ pub fn movement_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
         ui.checkbox(&mut config.wall_clinging, "Wall Clinging");
         ui.add_enabled_ui(config.wall_clinging, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Friction:");
+                ui.label("Dampening:");
                 ui.add(
-                    egui::DragValue::new(&mut config.wall_clinging_friction)
+                    egui::DragValue::new(&mut config.wall_clinging_dampening)
                         .speed(0.01)
                         .range(0.0..=1.0),
                 );

@@ -247,7 +247,11 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
         );
         app.add_systems(
             FixedUpdate,
-            (systems::apply_walk::<B>, systems::apply_fly::<B>)
+            (
+                systems::apply_walk::<B>,
+                systems::apply_fly::<B>,
+                systems::apply_wall_clinging_dampening::<B>,
+            )
                 .in_set(CharacterControllerSet::IntentApplication),
         );
     }

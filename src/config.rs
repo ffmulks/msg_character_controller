@@ -672,9 +672,12 @@ pub struct ControllerConfig {
     /// When false, movement intent toward a detected wall is rejected.
     pub wall_clinging: bool,
 
-    /// Friction applied when clinging to a wall (0.0-1.0).
-    /// Higher values make the character stick more firmly to the wall.
-    pub wall_clinging_friction: f32,
+    /// Dampening applied to downward motion when clinging to a wall (0.0-1.0).
+    /// Higher values slow the character's descent along the wall surface.
+    /// At 1.0, the character will stop sliding down; at 0.0, no dampening is applied.
+    /// Dampening is only applied when moving toward the wall; downward movement
+    /// intent overrides the dampening to allow intentional descent.
+    pub wall_clinging_dampening: f32,
 
     // === Slope Settings ===
     /// Maximum slope angle the character can walk up (radians).
@@ -793,7 +796,7 @@ impl Default for ControllerConfig {
             friction: 0.1,
             air_control: 0.3,
             wall_clinging: true, // Allow wall clinging by default
-            wall_clinging_friction: 0.5, // Moderate wall friction by default
+            wall_clinging_dampening: 0.5, // Moderate wall dampening by default
 
             // Slope settings
             max_slope_angle: std::f32::consts::FRAC_PI_3, // 60 degrees
