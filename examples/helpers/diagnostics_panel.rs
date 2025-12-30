@@ -200,6 +200,90 @@ pub fn wall_ceiling_ui(ui: &mut egui::Ui, controller: &CharacterController) {
     });
 }
 
+/// Renders the stair climbing detection section.
+pub fn stair_climbing_ui(ui: &mut egui::Ui, controller: &CharacterController) {
+    ui.collapsing("Stair Climbing", |ui| {
+        // Check if stair stepping is enabled
+        let stair_enabled = controller
+            .stair_config
+            .as_ref()
+            .map(|c| c.enabled)
+            .unwrap_or(false);
+
+        ui.horizontal(|ui| {
+            ui.label("Enabled:");
+            let color = if stair_enabled {
+                egui::Color32::from_rgb(100, 200, 100)
+            } else {
+                egui::Color32::from_rgb(150, 150, 150)
+            };
+            ui.colored_label(color, if stair_enabled { "Yes" } else { "No" });
+        });
+
+        if !stair_enabled {
+            ui.label("(Stair stepping disabled)");
+            return;
+        }
+
+        // Step detection status
+        ui.horizontal(|ui| {
+            ui.label("Step Detected:");
+            if controller.step_detected {
+                ui.colored_label(
+                    egui::Color32::from_rgb(200, 150, 100),
+                    format!("Yes (height={:.2})", controller.step_height),
+                );
+            } else {
+                ui.colored_label(egui::Color32::from_rgb(150, 150, 150), "No");
+            }
+        });
+
+        // Show max climb height for reference
+        if let Some(ref stair_config) = controller.stair_config {
+            ui.horizontal(|ui| {
+                ui.label("Max Climb Height:");
+                ui.label(format!("{:.2}", stair_config.max_climb_height));
+            });
+        }
+
+        // Active climbing state
+        let is_climbing = controller.active_stair_height > 0.01;
+        ui.horizontal(|ui| {
+            ui.label("Climbing Active:");
+            let color = if is_climbing {
+                egui::Color32::from_rgb(100, 200, 100)
+            } else {
+                egui::Color32::from_rgb(150, 150, 150)
+            };
+            ui.colored_label(color, if is_climbing { "Yes" } else { "No" });
+        });
+
+        if is_climbing {
+            ui.horizontal(|ui| {
+                ui.label("Active Height:");
+                ui.colored_label(
+                    egui::Color32::from_rgb(100, 200, 100),
+                    format!("{:.2}", controller.active_stair_height),
+                );
+            });
+        }
+
+        // Summary status
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label("Status:");
+            let (status_text, status_color) = if is_climbing {
+                ("CLIMBING", egui::Color32::from_rgb(100, 200, 100))
+            } else if controller.step_detected {
+                ("STEP AHEAD", egui::Color32::from_rgb(200, 150, 100))
+            } else {
+                ("Idle", egui::Color32::from_rgb(150, 150, 150))
+            };
+            ui.colored_label(status_color, status_text);
+        });
+    });
+}
+
 /// Renders the movement intent section.
 pub fn movement_intent_ui(ui: &mut egui::Ui, movement: Option<&MovementIntent>) {
     ui.collapsing("Movement Intent", |ui| {
@@ -278,14 +362,6 @@ pub fn internal_state_ui(ui: &mut egui::Ui, controller: &CharacterController) {
         ui.horizontal(|ui| {
             ui.label("Collider Bottom Offset:");
             ui.label(format!("{:.2}", controller.capsule_half_height()));
-        });
-        ui.horizontal(|ui| {
-            ui.label("Step Detected:");
-            ui.label(if controller.step_detected {
-                format!("Yes (h={:.2})", controller.step_height)
-            } else {
-                "No".to_string()
-            });
         });
     });
 }
@@ -371,6 +447,7 @@ pub fn diagnostics_panel_ui(ui: &mut egui::Ui, data: &DiagnosticsData) {
         position_velocity_ui(ui, data.transform, data.velocity);
         ground_detection_ui(ui, data.controller, data.config);
         wall_ceiling_ui(ui, data.controller);
+        stair_climbing_ui(ui, data.controller);
         movement_intent_ui(ui, data.movement_intent);
         internal_state_ui(ui, data.controller);
         external_forces_ui(ui, data.external_force, data.external_impulse);

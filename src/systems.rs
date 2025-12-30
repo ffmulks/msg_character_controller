@@ -162,11 +162,8 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
         let target_height = controller.effective_riding_height(&config);
         let current_height = floor.distance;
 
-        // Check if we should filter downward spring forces:
-        // 1. intends_upward_propulsion - intent evaluated this frame (same-frame filtering)
-        // 2. in_jump_spring_filter_window - timer-based filter (cross-frame filtering)
-        let should_filter_downward = controller.intends_upward_propulsion
-            || controller.in_jump_spring_filter_window();
+        // Check if we should filter downward spring forces
+        let should_filter_downward = controller.upward_intent();
 
         // Only apply spring within active range, unless filtering
         // During filtering, we still process the spring but filter downward forces
@@ -302,6 +299,10 @@ pub fn accumulate_stair_climb_force<B: CharacterPhysicsBackend>(world: &mut Worl
 /// character is not grounded. Applied as an impulse each physics frame to
 /// produce the equivalent acceleration.
 ///
+/// **Important**: Gravity is filtered during upward propulsion (jump or fly up)
+/// to prevent fighting against the intended upward movement. This filtering
+/// uses the same `jump_spring_filter_window` as the spring system for consistency.
+///
 /// Note: Gravity is always applied internally by this system. To change the
 /// gravity affecting a character, modify CharacterController::gravity directly.
 pub fn accumulate_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
@@ -316,6 +317,11 @@ pub fn accumulate_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
         .collect();
 
     for (entity, controller, _config) in entities {
+        // Skip gravity during upward propulsion to allow reaching intended height
+        if controller.upward_intent() {
+            continue;
+        }
+
         // Apply gravity as an impulse: I = m * g * dt
         // This produces velocity change: dv = I / m = g * dt
         // Using impulse ensures gravity is integrated correctly with the physics step
