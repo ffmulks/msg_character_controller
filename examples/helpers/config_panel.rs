@@ -200,6 +200,23 @@ pub fn flying_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
         ui.label("(1.0 = same as horizontal, 0.5 = vertical is half speed)");
 
         ui.horizontal(|ui| {
+            ui.label("Acceleration:");
+            ui.add(
+                egui::DragValue::new(&mut config.fly_acceleration)
+                    .speed(10.0)
+                    .range(0.0..=100000.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Vertical Accel Ratio:");
+            ui.add(
+                egui::Slider::new(&mut config.fly_vertical_acceleration_ratio, 0.0..=2.0)
+                    .fixed_decimals(2),
+            );
+        });
+        ui.label("(1.0 = same as horizontal, 0.5 = vertical is half accel)");
+
+        ui.horizontal(|ui| {
             ui.label("Gravity Compensation:");
             ui.add(
                 egui::Slider::new(&mut config.fly_gravity_compensation, 0.0..=2.0)
