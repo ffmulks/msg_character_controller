@@ -37,6 +37,9 @@ pub struct MovementIntent {
     pub walk: f32,
     /// Vertical propulsion intent (-1.0 = down, 1.0 = up).
     pub fly: f32,
+    /// Horizontal propulsion intent (-1.0 = left, 1.0 = right).
+    /// Separate from walk for flying propulsion using different controls.
+    pub fly_horizontal: f32,
     /// Speed multiplier for walking (0.0 to 1.0).
     pub walk_speed: f32,
     /// Speed multiplier for flying (0.0 to 1.0).
@@ -74,6 +77,7 @@ impl Default for MovementIntent {
         Self {
             walk: 0.0,
             fly: 0.0,
+            fly_horizontal: 0.0,
             walk_speed: 1.0,
             fly_speed: 1.0,
             jump_request: None,
@@ -99,6 +103,11 @@ impl MovementIntent {
         self.fly = direction.clamp(-1.0, 1.0);
     }
 
+    /// Set the horizontal flying direction (-1.0 = left, 1.0 = right).
+    pub fn set_fly_horizontal(&mut self, direction: f32) {
+        self.fly_horizontal = direction.clamp(-1.0, 1.0);
+    }
+
     /// Set the walk speed multiplier (0.0 to 1.0).
     pub fn set_walk_speed(&mut self, multiplier: f32) {
         self.walk_speed = multiplier.clamp(0.0, 1.0);
@@ -113,6 +122,7 @@ impl MovementIntent {
     pub fn clear(&mut self) {
         self.walk = 0.0;
         self.fly = 0.0;
+        self.fly_horizontal = 0.0;
     }
 
     /// Clear only walking intent.
@@ -123,6 +133,11 @@ impl MovementIntent {
     /// Clear only flying intent.
     pub fn clear_fly(&mut self) {
         self.fly = 0.0;
+    }
+
+    /// Clear only horizontal flying intent.
+    pub fn clear_fly_horizontal(&mut self) {
+        self.fly_horizontal = 0.0;
     }
 
     /// Check if there is active walking input.
@@ -145,6 +160,21 @@ impl MovementIntent {
         self.fly < -0.001
     }
 
+    /// Check if there is active horizontal flying input.
+    pub fn is_flying_horizontal(&self) -> bool {
+        self.fly_horizontal.abs() > 0.001
+    }
+
+    /// Check if flying left horizontally.
+    pub fn is_flying_left(&self) -> bool {
+        self.fly_horizontal < -0.001
+    }
+
+    /// Check if flying right horizontally.
+    pub fn is_flying_right(&self) -> bool {
+        self.fly_horizontal > 0.001
+    }
+
     /// Get the effective walking direction with speed multiplier applied.
     pub fn effective_walk(&self) -> f32 {
         self.walk * self.walk_speed
@@ -153,6 +183,11 @@ impl MovementIntent {
     /// Get the effective flying direction with speed multiplier applied.
     pub fn effective_fly(&self) -> f32 {
         self.fly * self.fly_speed
+    }
+
+    /// Get the effective horizontal flying direction with speed multiplier applied.
+    pub fn effective_fly_horizontal(&self) -> f32 {
+        self.fly_horizontal * self.fly_speed
     }
 
     /// Request a jump with the given buffer duration.
@@ -274,6 +309,7 @@ mod tests {
         let intent = MovementIntent::new();
         assert_eq!(intent.walk, 0.0);
         assert_eq!(intent.fly, 0.0);
+        assert_eq!(intent.fly_horizontal, 0.0);
         assert_eq!(intent.walk_speed, 1.0);
         assert_eq!(intent.fly_speed, 1.0);
         assert!(intent.jump_request.is_none());
@@ -353,16 +389,67 @@ mod tests {
     }
 
     #[test]
+    fn movement_intent_set_fly_horizontal() {
+        let mut intent = MovementIntent::new();
+        intent.set_fly_horizontal(0.5);
+        assert_eq!(intent.fly_horizontal, 0.5);
+
+        intent.set_fly_horizontal(-0.8);
+        assert_eq!(intent.fly_horizontal, -0.8);
+
+        // Clamps to valid range
+        intent.set_fly_horizontal(2.0);
+        assert_eq!(intent.fly_horizontal, 1.0);
+
+        intent.set_fly_horizontal(-2.0);
+        assert_eq!(intent.fly_horizontal, -1.0);
+    }
+
+    #[test]
+    fn movement_intent_is_flying_horizontal() {
+        let mut intent = MovementIntent::new();
+        assert!(!intent.is_flying_horizontal());
+        assert!(!intent.is_flying_left());
+        assert!(!intent.is_flying_right());
+
+        intent.set_fly_horizontal(0.5);
+        assert!(intent.is_flying_horizontal());
+        assert!(intent.is_flying_right());
+        assert!(!intent.is_flying_left());
+
+        intent.set_fly_horizontal(-0.5);
+        assert!(intent.is_flying_horizontal());
+        assert!(intent.is_flying_left());
+        assert!(!intent.is_flying_right());
+    }
+
+    #[test]
     fn movement_intent_clear() {
         let mut intent = MovementIntent::new();
         intent.set_walk(1.0);
         intent.set_fly(1.0);
+        intent.set_fly_horizontal(1.0);
 
         intent.clear();
         assert!(!intent.is_walking());
         assert!(!intent.is_flying());
+        assert!(!intent.is_flying_horizontal());
         assert_eq!(intent.walk, 0.0);
         assert_eq!(intent.fly, 0.0);
+        assert_eq!(intent.fly_horizontal, 0.0);
+    }
+
+    #[test]
+    fn movement_intent_clear_fly_horizontal() {
+        let mut intent = MovementIntent::new();
+        intent.set_walk(1.0);
+        intent.set_fly(1.0);
+        intent.set_fly_horizontal(1.0);
+
+        intent.clear_fly_horizontal();
+        assert!(intent.is_walking());
+        assert!(intent.is_flying());
+        assert!(!intent.is_flying_horizontal());
     }
 
     #[test]
