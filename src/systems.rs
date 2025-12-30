@@ -30,6 +30,31 @@ use crate::intent::MovementIntent;
 // PHASE 1: PREPARATION (Timer Ticking)
 // ============================================================================
 
+/// Process jump state: detect rising edge and create JumpRequests.
+///
+/// This system detects when `jump_pressed` transitions from false to true
+/// and creates a new JumpRequest with the configured `jump_buffer_time`.
+/// It also updates `jump_pressed_prev` for the next frame's edge detection.
+///
+/// Note: This system does not process raw input (keyboard, gamepad, etc.).
+/// User code sets `jump_pressed` to a boolean, and this system handles
+/// the rest (edge detection, buffering, etc.).
+///
+/// This must run before `tick_jump_request_timers` so that new requests
+/// are created before timers are ticked.
+pub fn process_jump_state(mut query: Query<(&mut MovementIntent, &ControllerConfig)>) {
+    for (mut intent, config) in &mut query {
+        // Detect rising edge: pressed this frame but not last frame
+        if intent.jump_pressed && !intent.jump_pressed_prev {
+            // Create a new jump request with the configured buffer time
+            intent.request_jump(config.jump_buffer_time);
+        }
+
+        // Update previous state for next frame's edge detection
+        intent.jump_pressed_prev = intent.jump_pressed;
+    }
+}
+
 /// Tick jump request timers for all entities.
 ///
 /// This system runs early in the frame to advance all jump request timers.
@@ -450,13 +475,13 @@ pub fn apply_fall_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
             !controller.is_grounded(config) && config.fall_gravity > 1.0
         })
         .map(|(e, config, controller, intent)| {
-            // Check if jump button is held (player wants full jump height)
-            let jump_held = intent.jump_held;
-            (e, *config, controller.clone(), jump_held)
+            // Check if jump button is pressed (player wants full jump height)
+            let jump_pressed = intent.jump_pressed;
+            (e, *config, controller.clone(), jump_pressed)
         })
         .collect();
 
-    for (entity, config, controller, jump_held) in entities {
+    for (entity, config, controller, jump_pressed) in entities {
         let up = controller.ideal_up();
         let velocity = B::get_velocity(world, entity);
         let vertical_velocity = velocity.dot(up);
@@ -466,11 +491,11 @@ pub fn apply_fall_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
         // 1. We jumped recently (within jump_cancel_window)
         // 2. AND we're past the recently_jumped grace period (protects against velocity flicker)
         // 3. AND either:
-        //    - Jump button not held (player let go)
+        //    - Jump button not pressed (player let go)
         //    - OR we're moving downward (crossed the zenith)
         let should_trigger = controller.in_jump_cancel_window()
             && !controller.recently_jumped()
-            && (!jump_held || vertical_velocity < 0.0);
+            && (!jump_pressed || vertical_velocity < 0.0);
 
         // Trigger fall gravity if conditions are met
         if should_trigger && !controller.fall_gravity_active() {

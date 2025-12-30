@@ -92,12 +92,13 @@ impl Plugin for ControlsPlugin {
 /// Handles keyboard input for movement and jumping.
 ///
 /// This system reads keyboard input and updates `MovementIntent` on entities
-/// with the `Player` marker. Jump requests are stored in MovementIntent.
+/// with the `Player` marker. Jump input is handled by simply forwarding the
+/// button state - the system automatically detects rising edges and creates
+/// jump requests with the configured buffer time.
 ///
 /// Input is disabled when egui wants keyboard focus (e.g., when typing in a text field).
 fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
     egui_wants_input: Res<EguiWantsInput>,
     mut query: Query<&mut MovementIntent, With<Player>>,
 ) {
@@ -106,6 +107,7 @@ fn handle_input(
         // Clear any ongoing movement when egui takes focus
         for mut movement in &mut query {
             movement.clear();
+            movement.set_jump_pressed(false);
         }
         return;
     }
@@ -132,10 +134,11 @@ fn handle_input(
         }
         movement.set_fly(vertical);
 
-        // Jump on W or Up (just pressed)
-        if keyboard.just_pressed(KeyCode::KeyW) || keyboard.just_pressed(KeyCode::ArrowUp) {
-            movement.request_jump(time.elapsed_secs());
-        }
+        // Jump on W or Up - pass the current button state as a bool
+        // The controller handles edge detection, buffering, and all jump logic
+        let wants_to_jump =
+            keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp);
+        movement.set_jump_pressed(wants_to_jump);
     }
 }
 
