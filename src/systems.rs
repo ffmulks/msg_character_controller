@@ -750,7 +750,19 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
 
             // Apply impulse along slope tangent: I = m * dv
             // Only the walking impulse is rotated - external velocity and spring system are unaffected
-            let walk_impulse = slope_tangent * slope_velocity_delta * mass;
+            let mut walk_impulse = slope_tangent * slope_velocity_delta * mass;
+
+            // When we just jumped (within recently_jumped protection timer),
+            // reject any upward component from the walking impulse.
+            // This prevents walking up slopes and jumping from giving too strong jumps.
+            if controller.recently_jumped() {
+                let up = controller.ideal_up();
+                let upward_component = walk_impulse.dot(up);
+                if upward_component > 0.0 {
+                    walk_impulse -= up * upward_component;
+                }
+            }
+
             B::apply_impulse(world, entity, walk_impulse);
         } else {
             // AIRBORNE: Use world-space horizontal axis
