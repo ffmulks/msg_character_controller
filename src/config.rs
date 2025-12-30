@@ -740,6 +740,16 @@ pub struct ControllerConfig {
     /// Applies to both upward and downward propulsion.
     pub fly_vertical_speed_ratio: f32,
 
+    /// Acceleration rate for flying (units/second^2).
+    /// This is the base acceleration used for flying propulsion.
+    /// Defaults to same as acceleration.
+    pub fly_acceleration: f32,
+
+    /// Ratio of vertical flying acceleration relative to horizontal.
+    /// 1.0 = same acceleration, 0.5 = vertical is half horizontal acceleration.
+    /// Applied before gravity compensation is added for upward flight.
+    pub fly_vertical_acceleration_ratio: f32,
+
     /// Gravity compensation ratio when flying upward (0.0-1.0+).
     /// 0.0 = no compensation, flying must overcome gravity manually.
     /// 1.0 = full compensation, flying upward automatically counters gravity.
@@ -899,11 +909,13 @@ impl Default for ControllerConfig {
             friction: 0.06,
             air_control: 0.15,
             // Flying settings
-            fly_max_speed: 150.0,               // Same as max_speed by default
-            fly_vertical_speed_ratio: 0.6,      // Same speed vertical and horizontal
-            fly_gravity_compensation: 0.05,     // Gravity compensation by default
-            wall_clinging: true,                // Allow wall clinging by default
-            wall_clinging_dampening: 0.5,       // Moderate wall dampening by default
+            fly_max_speed: 150.0,              // Same as max_speed by default
+            fly_vertical_speed_ratio: 0.6,     // Same speed vertical and horizontal
+            fly_acceleration: 80.0,           // Same as acceleration by default
+            fly_vertical_acceleration_ratio: 0.6, // Same acceleration vertical and horizontal
+            fly_gravity_compensation: 0.05,     // Full gravity compensation by default
+            wall_clinging: true, // Allow wall clinging by default
+            wall_clinging_dampening: 0.5, // Moderate wall dampening by default
             wall_clinging_dampen_upward: false, // Only dampen downward motion by default
 
             // Slope settings
@@ -1033,6 +1045,19 @@ impl ControllerConfig {
     /// 1.0 = same speed, 0.5 = vertical is half horizontal speed.
     pub fn with_fly_vertical_speed_ratio(mut self, ratio: f32) -> Self {
         self.fly_vertical_speed_ratio = ratio;
+        self
+    }
+
+    /// Builder: set flying acceleration.
+    pub fn with_fly_acceleration(mut self, acceleration: f32) -> Self {
+        self.fly_acceleration = acceleration;
+        self
+    }
+
+    /// Builder: set flying vertical acceleration ratio.
+    /// 1.0 = same acceleration, 0.5 = vertical is half horizontal acceleration.
+    pub fn with_fly_vertical_acceleration_ratio(mut self, ratio: f32) -> Self {
+        self.fly_vertical_acceleration_ratio = ratio;
         self
     }
 
