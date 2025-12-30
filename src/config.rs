@@ -629,6 +629,13 @@ pub struct ControllerConfig {
     /// Extra downward force when walking uphill.
     pub uphill_gravity_multiplier: f32,
 
+    /// Multiplier for extra downward impulse when walking downhill.
+    /// When the walk direction has a downward component (walking down a slope),
+    /// this multiplier is applied to add extra downward force to keep the
+    /// character pressed against the slope. Higher values = more grounding.
+    /// A value of 0.0 disables the effect.
+    pub downhill_force_multiplier: f32,
+
     // === Sensor Settings (multipliers - actual lengths derived from float_height) ===
     /// Ground cast length = float_height * ground_cast_multiplier.
     /// Higher values detect ground from further away (good for falling).
@@ -731,6 +738,7 @@ impl Default for ControllerConfig {
             // Slope settings
             max_slope_angle: std::f32::consts::FRAC_PI_3, // 60 degrees
             uphill_gravity_multiplier: 1.0,
+            downhill_force_multiplier: 2.0, // Extra downward force when walking downhill
 
             // Sensor settings (derived from float_height)
             ground_cast_multiplier: 1.0,
@@ -946,6 +954,13 @@ impl ControllerConfig {
     /// Builder: set grounding strength.
     pub fn with_grounding_strength(mut self, strength: f32) -> Self {
         self.grounding_strength = strength;
+        self
+    }
+
+    /// Builder: set downhill force multiplier.
+    /// Controls extra downward impulse when walking downhill to keep the character grounded.
+    pub fn with_downhill_force_multiplier(mut self, multiplier: f32) -> Self {
+        self.downhill_force_multiplier = multiplier;
         self
     }
 }

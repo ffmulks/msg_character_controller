@@ -503,6 +503,10 @@ pub fn apply_fall_gravity<B: CharacterPhysicsBackend>(world: &mut World) {
 ///
 /// For the floating controller, friction is simulated internally since the character
 /// hovers above the ground and doesn't use Rapier's contact friction.
+///
+/// **Downhill walking**: When walking downhill (slope tangent has a downward component),
+/// an extra downward impulse is applied based on `downhill_force_multiplier`. This helps
+/// keep the character pressed against the slope instead of floating off due to momentum.
 pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
     let entities: Vec<(Entity, ControllerConfig, MovementIntent, CharacterController)> = world
         .query::<(
@@ -544,12 +548,12 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
         if is_grounded && controller.ground_detected() {
             // GROUNDED: Move along slope surface using forces
             // Clamp the slope tangent to respect max_slope_angle
+            let up = controller.ideal_up();
             let slope_tangent = if controller.slope_angle <= config.max_slope_angle {
                 // Within max slope angle, use actual slope tangent
                 controller.ground_tangent()
             } else {
                 // Slope exceeds max angle, clamp the tangent direction
-                let up = controller.ideal_up();
                 let ground_normal = controller.ground_normal();
 
                 // Determine slope tilt direction based on which way the normal leans
@@ -591,6 +595,31 @@ pub fn apply_walk<B: CharacterPhysicsBackend>(world: &mut World) {
             // Only the walking impulse is rotated - external velocity and spring system are unaffected
             let walk_impulse = slope_tangent * slope_velocity_delta * mass;
             B::apply_impulse(world, entity, walk_impulse);
+
+            // Apply extra downhill force when walking downhill
+            // This helps keep the character pressed against the slope
+            if config.downhill_force_multiplier > 0.0 && intent.is_walking() {
+                // Get the actual walk direction (slope tangent in the direction we're walking)
+                let walk_sign = effective_walk.signum();
+                let walk_direction = slope_tangent * walk_sign;
+
+                // Check if walking downhill (walk direction has negative vertical component)
+                let downhill_component = -walk_direction.dot(up);
+                if downhill_component > 0.0 {
+                    // Calculate downhill impulse proportional to:
+                    // - The downhill angle (downhill_component)
+                    // - The multiplier
+                    // - Gravity magnitude
+                    let down = -up;
+                    let gravity_magnitude = controller.gravity.length();
+
+                    // Extra downhill impulse = gravity * downhill_component * multiplier * dt
+                    // This effectively adds extra gravity when walking downhill
+                    let downhill_impulse =
+                        down * gravity_magnitude * downhill_component * config.downhill_force_multiplier * mass * dt;
+                    B::apply_impulse(world, entity, downhill_impulse);
+                }
+            }
         } else {
             // AIRBORNE: Use world-space horizontal axis
             let current_horizontal = current_velocity.dot(right);
