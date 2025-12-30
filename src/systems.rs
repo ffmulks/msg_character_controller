@@ -828,7 +828,8 @@ pub fn apply_fly<B: CharacterPhysicsBackend>(world: &mut World) {
 
             if should_apply_downward {
                 // Use fly_acceleration with vertical ratio as base
-                let mut fly_accel = config.fly_acceleration * config.fly_vertical_acceleration_ratio;
+                let mut fly_accel =
+                    config.fly_acceleration * config.fly_vertical_acceleration_ratio;
 
                 // Boost upward propulsion by gravity based on compensation setting
                 if fly_direction > 0.0 {

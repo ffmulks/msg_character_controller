@@ -909,14 +909,14 @@ impl Default for ControllerConfig {
             friction: 0.06,
             air_control: 0.15,
             // Flying settings
-            fly_max_speed: 150.0,              // Same as max_speed by default
-            fly_vertical_speed_ratio: 0.6,     // Same speed vertical and horizontal
-            fly_acceleration: 80.0,           // Same as acceleration by default
+            fly_max_speed: 150.0,                 // Same as max_speed by default
+            fly_vertical_speed_ratio: 0.6,        // Same speed vertical and horizontal
+            fly_acceleration: 80.0,               // Same as acceleration by default
             fly_vertical_acceleration_ratio: 0.6, // Same acceleration vertical and horizontal
-            fly_gravity_compensation: 0.05,     // Full gravity compensation by default
-            wall_clinging: true, // Allow wall clinging by default
-            wall_clinging_dampening: 0.5, // Moderate wall dampening by default
-            wall_clinging_dampen_upward: false, // Only dampen downward motion by default
+            fly_gravity_compensation: 0.05,       // Full gravity compensation by default
+            wall_clinging: true,                  // Allow wall clinging by default
+            wall_clinging_dampening: 0.5,         // Moderate wall dampening by default
+            wall_clinging_dampen_upward: false,   // Only dampen downward motion by default
 
             // Slope settings
             max_slope_angle: std::f32::consts::FRAC_PI_3, // pi/3 radians
