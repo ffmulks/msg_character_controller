@@ -43,20 +43,30 @@ pub struct MovementIntent {
     pub fly_speed: f32,
     /// Pending jump request, if any.
     ///
-    /// Set via `request_jump()`. The controller consumes this by calling
-    /// `take_jump_request()`. New requests are ignored while one is pending
-    /// to preserve coyote time behavior.
+    /// Created automatically when `jump_pressed` transitions from false to true.
+    /// The controller consumes this by calling `take_jump_request()`.
     pub jump_request: Option<JumpRequest>,
-    /// Whether the jump button is currently held.
+    /// Whether the jump action is currently active (true = wanting to jump).
     ///
-    /// This should be set to `true` every frame the player holds the jump button.
-    /// Used by the fall gravity system to determine if the player is still
-    /// trying to jump (to allow full jump height) vs has released (to apply
-    /// fall gravity for shorter hops).
+    /// Set this to `true` when you want the character to jump, `false` otherwise.
+    /// This is just a boolean state - you handle input detection in your code,
+    /// and the controller handles the jump logic.
     ///
-    /// Unlike `jump_request`, this is not consumed - set it every frame based
-    /// on current input state.
-    pub jump_held: bool,
+    /// The controller will:
+    /// - Detect when this changes from `false` to `true` and create a buffered jump request
+    /// - Use the held state for fall gravity calculations (shorter hops when released early)
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// // Your code handles input, we just receive a bool:
+    /// intent.set_jump_pressed(keyboard.pressed(KeyCode::Space));
+    /// // Or from gamepad, touch, AI, etc. - any source of a boolean
+    /// intent.set_jump_pressed(gamepad.pressed(GamepadButton::South));
+    /// ```
+    pub jump_pressed: bool,
+    /// Previous frame's jump_pressed state (for edge detection).
+    /// This is managed internally by the controller.
+    pub(crate) jump_pressed_prev: bool,
 }
 
 impl Default for MovementIntent {
@@ -67,7 +77,8 @@ impl Default for MovementIntent {
             walk_speed: 1.0,
             fly_speed: 1.0,
             jump_request: None,
-            jump_held: false,
+            jump_pressed: false,
+            jump_pressed_prev: false,
         }
     }
 }
@@ -146,9 +157,12 @@ impl MovementIntent {
 
     /// Request a jump with the given buffer duration.
     ///
+    /// **Note**: Prefer using `set_jump_pressed()` instead, which handles
+    /// edge detection and timer creation automatically.
+    ///
     /// Creates a jump request with a timer. The request will be consumed
     /// by apply_jump if conditions allow before the timer expires.
-    pub fn request_jump(&mut self, buffer_time: f32) {
+    pub(crate) fn request_jump(&mut self, buffer_time: f32) {
         self.jump_request = Some(JumpRequest::new(buffer_time));
     }
 
@@ -169,14 +183,37 @@ impl MovementIntent {
         self.jump_request = None;
     }
 
-    /// Set whether the jump button is currently held.
+    /// Set the jump state.
     ///
-    /// Call this every frame with the current button state. This is used by
-    /// the fall gravity system to distinguish between:
-    /// - Player holding jump: allow full jump height
-    /// - Player released jump: apply fall gravity for shorter hop
-    pub fn set_jump_held(&mut self, held: bool) {
-        self.jump_held = held;
+    /// Pass `true` when the player/AI wants to jump, `false` otherwise.
+    /// Call this every frame with the current state. The controller will:
+    /// - Detect when this changes from `false` to `true` (rising edge)
+    /// - Automatically create a buffered jump request using `config.jump_buffer_time`
+    /// - Track the held state for fall gravity (shorter hops when released early)
+    ///
+    /// You handle input detection, we handle jump logic. This works with any
+    /// input source: keyboard, gamepad, touch, AI, network, etc.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// // From keyboard:
+    /// intent.set_jump_pressed(keyboard.pressed(KeyCode::Space));
+    ///
+    /// // From gamepad:
+    /// intent.set_jump_pressed(gamepad.pressed(GamepadButton::South));
+    ///
+    /// // From AI:
+    /// intent.set_jump_pressed(ai.wants_to_jump());
+    /// ```
+    pub fn set_jump_pressed(&mut self, pressed: bool) {
+        self.jump_pressed = pressed;
+    }
+
+    /// Check if jump is currently active.
+    ///
+    /// Returns the current boolean state set via `set_jump_pressed()`.
+    pub fn is_jump_pressed(&self) -> bool {
+        self.jump_pressed
     }
 }
 
@@ -442,5 +479,24 @@ mod tests {
 
         // New request should be valid and have fresh timer
         assert!(intent.jump_request.as_ref().unwrap().is_valid());
+    }
+
+    #[test]
+    fn movement_intent_set_jump_pressed() {
+        let mut intent = MovementIntent::new();
+        assert!(!intent.is_jump_pressed());
+
+        intent.set_jump_pressed(true);
+        assert!(intent.is_jump_pressed());
+
+        intent.set_jump_pressed(false);
+        assert!(!intent.is_jump_pressed());
+    }
+
+    #[test]
+    fn movement_intent_jump_pressed_default() {
+        let intent = MovementIntent::new();
+        assert!(!intent.jump_pressed);
+        assert!(!intent.jump_pressed_prev);
     }
 }

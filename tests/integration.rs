@@ -96,20 +96,19 @@ fn run_frames(app: &mut App, frames: usize) {
     }
 }
 
-/// Get elapsed time from the app.
-fn elapsed_time(app: &App) -> f32 {
-    app.world()
-        .get_resource::<Time>()
-        .map(|t| t.elapsed_secs())
-        .unwrap_or(0.0)
+/// Set jump pressed state on an entity.
+/// Call this with `pressed = true` to start a jump, then run a tick to process it.
+/// The system will automatically detect the rising edge and create a jump request.
+fn set_jump_pressed(app: &mut App, entity: Entity, pressed: bool) {
+    if let Some(mut intent) = app.world_mut().get_mut::<MovementIntent>(entity) {
+        intent.set_jump_pressed(pressed);
+    }
 }
 
-/// Request a jump at the current time.
+/// Request a jump by setting jump_pressed to true.
+/// Note: The jump won't be processed until the next tick when the system runs.
 fn request_jump(app: &mut App, entity: Entity) {
-    let time = elapsed_time(app);
-    if let Some(mut intent) = app.world_mut().get_mut::<MovementIntent>(entity) {
-        intent.request_jump(time);
-    }
+    set_jump_pressed(app, entity, true);
 }
 
 // ==================== Ground Detection Tests ====================

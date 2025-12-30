@@ -182,11 +182,12 @@ impl<B: backend::CharacterPhysicsBackend> Plugin for CharacterControllerPlugin<B
         );
 
         // Phase 1: Preparation
-        // Tick jump request timers and remove expired requests
+        // Process jump state (edge detection), tick request timers, remove expired requests
         // These must run before sensors/intent evaluation
         app.add_systems(
             FixedUpdate,
             (
+                systems::process_jump_state,
                 systems::tick_jump_request_timers,
                 systems::expire_jump_requests,
             )
