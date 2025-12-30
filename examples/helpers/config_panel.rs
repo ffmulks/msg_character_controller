@@ -47,19 +47,19 @@ pub fn float_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             );
         });
         ui.horizontal(|ui| {
-            ui.label("Cling Distance:");
+            ui.label("Grounding Distance:");
             ui.add(
-                egui::DragValue::new(&mut config.cling_distance)
+                egui::DragValue::new(&mut config.grounding_distance)
                     .speed(0.1)
                     .range(0.0..=50.0),
             );
         });
         ui.horizontal(|ui| {
-            ui.label("Cling Strength:");
+            ui.label("Grounding Strength:");
             ui.add(
-                egui::DragValue::new(&mut config.cling_strength)
-                    .speed(0.01)
-                    .range(0.0..=10.0),
+                egui::DragValue::new(&mut config.grounding_strength)
+                    .speed(0.1)
+                    .range(0.1..=10.0),
             );
         });
     });

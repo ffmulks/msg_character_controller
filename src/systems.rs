@@ -198,6 +198,11 @@ pub fn evaluate_intent<B: CharacterPhysicsBackend>(
 /// When climbing stairs, the target height includes `active_stair_height` to
 /// temporarily raise the character over the step.
 ///
+/// **Grounding strength**: When the character is slightly above the target height
+/// (within `grounding_distance`), the downward spring force is multiplied by
+/// `grounding_strength`. This helps keep the character firmly grounded when
+/// floating slightly above the riding height.
+///
 /// Downward spring forces are filtered when:
 /// - `intends_upward_propulsion` is true (same-frame filtering)
 /// - Within `jump_spring_filter_duration` after propulsion (cross-frame filtering)
@@ -261,9 +266,22 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
         // Scale spring force by mass so config values produce consistent acceleration
         let mass = B::get_mass(world, entity);
 
-        let spring_force = (config.spring_strength * displacement
+        let mut spring_force = (config.spring_strength * displacement
             - config.spring_damping * vertical_velocity)
             * mass;
+
+        // Apply grounding_strength multiplier when character is slightly above target
+        // (within grounding_distance buffer zone) and spring is pushing down.
+        // This helps keep the character grounded by amplifying the downward pull.
+        // displacement < 0 means current_height > target_height (above target)
+        // -displacement gives the height above target
+        let height_above_target = -displacement;
+        if displacement < 0.0
+            && height_above_target <= config.grounding_distance
+            && spring_force < 0.0
+        {
+            spring_force *= config.grounding_strength;
+        }
 
         // Clamp spring force to configured max, or use formula-based fallback.
         // The fallback prevents overflow when entering the spring zone at high velocity.
