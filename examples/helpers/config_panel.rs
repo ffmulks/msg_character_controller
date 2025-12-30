@@ -278,9 +278,9 @@ pub fn jump_settings_ui(ui: &mut egui::Ui, config: &mut ControllerConfig) {
             );
         });
         ui.horizontal(|ui| {
-            ui.label("Extra Fall Gravity:");
+            ui.label("Fall Gravity:");
             ui.add(
-                egui::DragValue::new(&mut config.extra_fall_gravity)
+                egui::DragValue::new(&mut config.fall_gravity)
                     .speed(0.1)
                     .range(0.0..=100.0),
             );

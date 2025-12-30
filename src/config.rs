@@ -106,11 +106,11 @@ pub struct CharacterController {
     #[reflect(ignore)]
     pub jumped_timer: Timer,
 
-    /// Timer for applying extra fall gravity after jump cancellation.
-    /// When extra fall gravity is triggered, this timer is reset and extra
+    /// Timer for applying fall gravity after jump cancellation.
+    /// When fall gravity is triggered, this timer is reset and fall
     /// gravity is applied while the timer has not finished.
     #[reflect(ignore)]
-    pub extra_gravity_timer: Timer,
+    pub fall_gravity_timer: Timer,
 
     /// Timer for blocking movement toward the wall after a wall jump.
     /// When a wall jump occurs, this timer is reset. While active, movement
@@ -132,7 +132,7 @@ pub struct CharacterController {
 
     // === Gravity ===
     /// Gravity vector affecting this character.
-    /// Used for floating spring, extra fall gravity, and jump countering.
+    /// Used for floating spring, fall gravity, and jump countering.
     pub gravity: Vec2,
 
     // === Force Accumulation (internal) ===
@@ -186,9 +186,9 @@ impl Default for CharacterController {
             // Jumped timer starts finished (no recent jump)
             // Duration is set by the system based on config.jump_cancel_window
             jumped_timer: Timer::new(Duration::ZERO, TimerMode::Once),
-            // Extra gravity timer starts finished (no active extra gravity)
-            // Duration is set by the system based on config.extra_gravity_duration
-            extra_gravity_timer: Timer::new(Duration::ZERO, TimerMode::Once),
+            // Fall gravity timer starts finished (no active fall gravity)
+            // Duration is set by the system based on config.fall_gravity_duration
+            fall_gravity_timer: Timer::new(Duration::ZERO, TimerMode::Once),
             // Wall jump movement block timer starts finished (no active blocking)
             // Duration is set by the system based on config.wall_jump_movement_block_duration
             wall_jump_movement_block_timer: Timer::new(Duration::ZERO, TimerMode::Once),
@@ -512,20 +512,20 @@ impl CharacterController {
         !self.jumped_timer.finished()
     }
 
-    /// Trigger extra fall gravity for the specified duration.
-    /// This starts the extra gravity timer.
-    pub fn trigger_extra_fall_gravity(&mut self, extra_gravity_duration: f32) {
-        if extra_gravity_duration > 0.0 {
-            self.extra_gravity_timer
-                .set_duration(Duration::from_secs_f32(extra_gravity_duration));
-            self.extra_gravity_timer.reset();
+    /// Trigger fall gravity for the specified duration.
+    /// This starts the fall gravity timer.
+    pub fn trigger_fall_gravity(&mut self, fall_gravity_duration: f32) {
+        if fall_gravity_duration > 0.0 {
+            self.fall_gravity_timer
+                .set_duration(Duration::from_secs_f32(fall_gravity_duration));
+            self.fall_gravity_timer.reset();
         }
     }
 
-    /// Check if extra fall gravity is currently active.
-    /// Returns true if extra gravity should be applied.
-    pub fn extra_fall_gravity_active(&self) -> bool {
-        !self.extra_gravity_timer.finished()
+    /// Check if fall gravity is currently active.
+    /// Returns true if fall gravity should be applied.
+    pub fn fall_gravity_active(&self) -> bool {
+        !self.fall_gravity_timer.finished()
     }
 
     // === Wall Jump Movement Block Methods ===
@@ -709,10 +709,10 @@ pub struct ControllerConfig {
     /// Jump buffer duration in seconds.
     pub jump_buffer_time: f32,
 
-    /// Extra gravity multiplier when jump is cancelled early.
-    /// This multiplier is applied to gravity during the extra_gravity_duration
+    /// Gravity multiplier when jump is cancelled early.
+    /// This multiplier is applied to gravity during the fall_gravity_duration
     /// window after the player releases the jump button or crosses the zenith.
-    pub extra_fall_gravity: f32,
+    pub fall_gravity: f32,
 
     // === Wall Jump Settings ===
     /// Whether wall jumping is enabled.
@@ -732,12 +732,12 @@ pub struct ControllerConfig {
 
     /// Duration (seconds) after jumping during which the jump can be cancelled.
     /// If the player releases the jump button within this window OR crosses the
-    /// zenith (starts moving downward), extra fall gravity will be triggered.
+    /// zenith (starts moving downward), fall gravity will be triggered.
     pub jump_cancel_window: f32,
 
-    /// Duration (seconds) for which extra fall gravity is applied after cancellation.
-    /// During this time, gravity is multiplied by extra_fall_gravity.
-    pub extra_gravity_duration: f32,
+    /// Duration (seconds) for which fall gravity is applied after cancellation.
+    /// During this time, gravity is multiplied by fall_gravity.
+    pub fall_gravity_duration: f32,
 
     // === Upright Torque Settings ===
     /// Whether to apply torque to keep the character upright.
@@ -801,9 +801,9 @@ impl Default for ControllerConfig {
             jump_speed: 120.0,
             coyote_time: 0.15,
             jump_buffer_time: 0.1,
-            extra_fall_gravity: 2.0,       // 2x gravity when jump is cancelled
+            fall_gravity: 2.0,             // 2x gravity when jump is cancelled
             jump_cancel_window: 2.0,       // 2 seconds to cancel jump
-            extra_gravity_duration: 0.3,   // 300ms of extra gravity
+            fall_gravity_duration: 0.3,    // 300ms of fall gravity
 
             // Wall jump settings
             wall_jumping: false,
@@ -929,9 +929,9 @@ impl ControllerConfig {
         self
     }
 
-    /// Builder: set extra fall gravity multiplier.
-    pub fn with_extra_fall_gravity(mut self, multiplier: f32) -> Self {
-        self.extra_fall_gravity = multiplier;
+    /// Builder: set fall gravity multiplier.
+    pub fn with_fall_gravity(mut self, multiplier: f32) -> Self {
+        self.fall_gravity = multiplier;
         self
     }
 
@@ -942,10 +942,10 @@ impl ControllerConfig {
         self
     }
 
-    /// Builder: set extra gravity duration.
-    /// Duration for which extra fall gravity is applied after cancellation.
-    pub fn with_extra_gravity_duration(mut self, duration: f32) -> Self {
-        self.extra_gravity_duration = duration;
+    /// Builder: set fall gravity duration.
+    /// Duration for which fall gravity is applied after cancellation.
+    pub fn with_fall_gravity_duration(mut self, duration: f32) -> Self {
+        self.fall_gravity_duration = duration;
         self
     }
 

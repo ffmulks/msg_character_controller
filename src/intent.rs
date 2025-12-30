@@ -47,6 +47,16 @@ pub struct MovementIntent {
     /// `take_jump_request()`. New requests are ignored while one is pending
     /// to preserve coyote time behavior.
     pub jump_request: Option<JumpRequest>,
+    /// Whether the jump button is currently held.
+    ///
+    /// This should be set to `true` every frame the player holds the jump button.
+    /// Used by the fall gravity system to determine if the player is still
+    /// trying to jump (to allow full jump height) vs has released (to apply
+    /// fall gravity for shorter hops).
+    ///
+    /// Unlike `jump_request`, this is not consumed - set it every frame based
+    /// on current input state.
+    pub jump_held: bool,
 }
 
 impl Default for MovementIntent {
@@ -57,6 +67,7 @@ impl Default for MovementIntent {
             walk_speed: 1.0,
             fly_speed: 1.0,
             jump_request: None,
+            jump_held: false,
         }
     }
 }
@@ -156,6 +167,16 @@ impl MovementIntent {
     /// Clear the pending jump request without consuming it.
     pub fn clear_jump_request(&mut self) {
         self.jump_request = None;
+    }
+
+    /// Set whether the jump button is currently held.
+    ///
+    /// Call this every frame with the current button state. This is used by
+    /// the fall gravity system to distinguish between:
+    /// - Player holding jump: allow full jump height
+    /// - Player released jump: apply fall gravity for shorter hop
+    pub fn set_jump_held(&mut self, held: bool) {
+        self.jump_held = held;
     }
 }
 
