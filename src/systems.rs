@@ -275,10 +275,12 @@ pub fn accumulate_spring_force<B: CharacterPhysicsBackend>(world: &mut World) {
         // This helps keep the character grounded by amplifying the downward pull.
         // displacement < 0 means current_height > target_height (above target)
         // -displacement gives the height above target
+        // Only apply when velocity is pointing up - if already falling, natural spring handles it
         let height_above_target = -displacement;
         if displacement < 0.0
             && height_above_target <= config.grounding_distance
             && spring_force < 0.0
+            && vertical_velocity > 0.0
         {
             spring_force *= config.grounding_strength;
         }
