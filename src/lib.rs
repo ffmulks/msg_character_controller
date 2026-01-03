@@ -259,9 +259,7 @@ pub mod prelude {
     pub use crate::config::{CharacterController, ControllerConfig, JumpType, StairConfig};
     pub use crate::intent::{JumpRequest, MovementIntent};
     pub use crate::navigation::{
-        BeginFreeFlight, NavigationBounds, NavigationComplete, NavigationHandover,
-        NavigationHandoverPlugin, NavigationHandoverSet, NavigationScenario, NavigationState,
-        NavigationStateChanged, NavigationTarget, RequestPathfinding,
+        NavigationBounds, NavigationHandover, NavigationScenario, NavigationState,
     };
 
     #[cfg(feature = "rapier2d")]

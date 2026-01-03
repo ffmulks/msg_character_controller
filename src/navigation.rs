@@ -1,8 +1,8 @@
-//! Navigation handover system for bevy_northstar integration.
+//! Navigation handover utilities for bevy_northstar integration.
 //!
-//! This module provides a robust system for handling transitions between
-//! grid-based pathfinding (bevy_northstar) and free flight when actors
-//! need to navigate to/from positions outside the navigation grid.
+//! This module provides types and utilities for handling transitions between
+//! grid-based pathfinding (bevy_northstar) and free flight when actors need
+//! to navigate to/from positions outside the navigation grid.
 //!
 //! # Problem
 //!
@@ -15,37 +15,60 @@
 //!
 //! # Solution
 //!
-//! This module provides a state machine that handles all permutations:
+//! This module provides utilities to handle all permutations:
 //!
-//! 1. **Both in grid** → Normal pathfinding (delegated to northstar)
+//! 1. **Both in grid** → Normal pathfinding (use `clamp_to_grid` for safety)
 //! 2. **Start in, target out** → Navigate to edge, then fly to target
 //! 3. **Start out, target in** → Fly to edge, then navigate to target
-//! 4. **Both out** → Direct flight (optionally via edge for obstacle avoidance)
+//! 4. **Both out** → Direct flight
 //!
 //! # Usage
 //!
 //! ```rust,ignore
 //! use msg_character_controller::navigation::*;
 //!
-//! // Configure grid bounds (typically derived from your northstar Grid)
-//! app.insert_resource(NavigationBounds {
-//!     min: Vec2::ZERO,
-//!     max: Vec2::new(192.0 * TILE_SIZE, 192.0 * TILE_SIZE),
-//!     edge_margin: TILE_SIZE * 2.0, // Safety margin from grid edge
-//! });
+//! // Add NavigationBounds component to your grid entity
+//! commands.spawn((
+//!     Grid::new(...),
+//!     NavigationBounds::from_grid(192, 192, TILE_SIZE),
+//! ));
 //!
-//! // Add navigation target to an entity
-//! commands.entity(actor).insert(NavigationTarget::new(target_pos));
+//! // In your navigation system, clamp targets to grid bounds
+//! fn set_target(
+//!     mut actors: Query<&mut TargetPos>,
+//!     grids: Query<&NavigationBounds>,
+//! ) {
+//!     let bounds = grids.single();
+//!     for mut target in &mut actors {
+//!         // Clamp target to grid - northstar will always succeed
+//!         target.0 = bounds.clamp_to_grid(target.0);
+//!     }
+//! }
 //!
-//! // The handover system will automatically manage transitions
+//! // Or use NavigationHandover for full state machine control
+//! fn navigate(
+//!     actors: Query<(&Transform, &mut NavigationHandover)>,
+//!     grids: Query<&NavigationBounds>,
+//! ) {
+//!     let bounds = grids.single();
+//!     for (transform, mut handover) in &mut actors {
+//!         let scenario = handover.evaluate(transform.translation.truncate(), bounds);
+//!         match scenario {
+//!             NavigationScenario::BothInside => { /* use northstar */ }
+//!             NavigationScenario::StartOutsideTargetInside => { /* fly to edge first */ }
+//!             // ...
+//!         }
+//!     }
+//! }
 //! ```
 
 use bevy::prelude::*;
 
-/// Resource defining the navigable grid bounds.
+/// Component defining the navigable grid bounds.
 ///
-/// This should match your bevy_northstar Grid dimensions, converted to world coordinates.
-#[derive(Resource, Clone, Debug)]
+/// Add this to your bevy_northstar Grid entity. Supports multiple grids
+/// with different bounds in the same world.
+#[derive(Component, Clone, Debug, Reflect)]
 pub struct NavigationBounds {
     /// Minimum corner of the navigable grid (world coordinates).
     pub min: Vec2,
@@ -104,6 +127,27 @@ impl NavigationBounds {
             && pos.y <= self.max.y - self.edge_margin
     }
 
+    /// Clamp a position to be inside the grid bounds.
+    ///
+    /// Use this to ensure TargetPos is always valid for northstar.
+    /// Positions outside the grid will be moved to the nearest edge.
+    pub fn clamp_to_grid(&self, pos: Vec2) -> Vec2 {
+        Vec2::new(
+            pos.x.clamp(self.min.x, self.max.x),
+            pos.y.clamp(self.min.y, self.max.y),
+        )
+    }
+
+    /// Clamp a position to be inside the grid bounds with margin.
+    ///
+    /// More conservative than `clamp_to_grid` - keeps positions away from edges.
+    pub fn clamp_to_grid_with_margin(&self, pos: Vec2) -> Vec2 {
+        Vec2::new(
+            pos.x.clamp(self.min.x + self.edge_margin, self.max.x - self.edge_margin),
+            pos.y.clamp(self.min.y + self.edge_margin, self.max.y - self.edge_margin),
+        )
+    }
+
     /// Find the closest point on the grid boundary (with margin applied).
     ///
     /// This is used to find where an actor should enter/exit the grid
@@ -112,29 +156,23 @@ impl NavigationBounds {
         let inner_min = self.min + Vec2::splat(self.edge_margin);
         let inner_max = self.max - Vec2::splat(self.edge_margin);
 
-        // If the target is inside, find where the ray from outside enters
-        // If the target is outside, find where the ray from inside exits
         let dir = (toward - from).normalize_or_zero();
 
         if dir == Vec2::ZERO {
-            // No direction, just clamp to nearest edge
             return Vec2::new(
                 from.x.clamp(inner_min.x, inner_max.x),
                 from.y.clamp(inner_min.y, inner_max.y),
             );
         }
 
-        // Find intersection with all 4 edges and pick the valid one
         let mut best_point = None;
         let mut best_dist = f32::INFINITY;
 
-        // For a point outside heading toward inside (or vice versa),
-        // we want the first intersection point along the ray
         let edges = [
-            (inner_min.x, true),  // left edge (x = inner_min.x)
-            (inner_max.x, true),  // right edge (x = inner_max.x)
-            (inner_min.y, false), // bottom edge (y = inner_min.y)
-            (inner_max.y, false), // top edge (y = inner_max.y)
+            (inner_min.x, true),  // left edge
+            (inner_max.x, true),  // right edge
+            (inner_min.y, false), // bottom edge
+            (inner_max.y, false), // top edge
         ];
 
         for (edge_val, is_vertical) in edges {
@@ -151,12 +189,11 @@ impl NavigationBounds {
             };
 
             if t < 0.0 {
-                continue; // Behind us
+                continue;
             }
 
             let point = from + dir * t;
 
-            // Check if point is within the edge bounds
             let valid = if is_vertical {
                 point.y >= inner_min.y && point.y <= inner_max.y
             } else {
@@ -170,7 +207,6 @@ impl NavigationBounds {
         }
 
         best_point.unwrap_or_else(|| {
-            // Fallback: clamp to the nearest corner
             Vec2::new(
                 from.x.clamp(inner_min.x, inner_max.x),
                 from.y.clamp(inner_min.y, inner_max.y),
@@ -184,7 +220,6 @@ impl NavigationBounds {
         let inner_min = self.min + Vec2::splat(self.edge_margin);
         let inner_max = self.max - Vec2::splat(self.edge_margin);
 
-        // If inside, find closest edge
         if self.contains_with_margin(pos) {
             let dist_left = pos.x - inner_min.x;
             let dist_right = inner_max.x - pos.x;
@@ -204,37 +239,11 @@ impl NavigationBounds {
             }
         }
 
-        // If outside, clamp to boundary
         Vec2::new(
             pos.x.clamp(inner_min.x, inner_max.x),
             pos.y.clamp(inner_min.y, inner_max.y),
         )
     }
-}
-
-/// Navigation state machine for handling grid/free-flight transitions.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
-pub enum NavigationState {
-    /// No active navigation target.
-    #[default]
-    Idle,
-
-    /// Following a bevy_northstar path (both positions in grid).
-    FollowingPath,
-
-    /// Flying toward the grid edge to begin pathfinding.
-    /// Used when start is outside grid, target is inside.
-    FlyingToEdge,
-
-    /// Flying from grid edge to final target outside grid.
-    /// Used when start is inside grid, target is outside.
-    FlyingFromEdge,
-
-    /// Direct flight between two out-of-grid positions.
-    DirectFlight,
-
-    /// Reached the destination.
-    Arrived,
 }
 
 /// Describes the scenario based on start/target positions relative to grid.
@@ -264,71 +273,151 @@ impl NavigationScenario {
             (false, false) => Self::BothOutside,
         }
     }
+
+    /// Check if pathfinding can be used (at least one position in grid).
+    pub fn can_use_pathfinding(&self) -> bool {
+        !matches!(self, Self::BothOutside)
+    }
+
+    /// Check if free flight is needed (at least one position outside grid).
+    pub fn needs_free_flight(&self) -> bool {
+        !matches!(self, Self::BothInside)
+    }
 }
 
-/// Component requesting navigation to a target position.
+/// Navigation state machine for handling grid/free-flight transitions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
+pub enum NavigationState {
+    /// No active navigation target.
+    #[default]
+    Idle,
+
+    /// Following a bevy_northstar path.
+    FollowingPath,
+
+    /// Flying toward the grid edge to begin pathfinding.
+    /// Used when start is outside grid, target is inside.
+    FlyingToEdge,
+
+    /// Flying from grid edge to final target outside grid.
+    /// Used when start is inside grid, target is outside.
+    FlyingFromEdge,
+
+    /// Direct flight between two out-of-grid positions.
+    DirectFlight,
+
+    /// Reached the destination.
+    Arrived,
+}
+
+/// Component tracking navigation handover state.
 ///
-/// Add this to an entity to trigger navigation. The handover system
-/// will automatically manage transitions between pathfinding and free flight.
-#[derive(Component, Clone, Debug, Reflect)]
-pub struct NavigationTarget {
-    /// The final destination in world coordinates.
-    pub target: Vec2,
-    /// Tolerance radius for considering arrival.
-    pub arrival_tolerance: f32,
-    /// Speed multiplier for free flight (0.0 to 1.0).
-    pub flight_speed: f32,
-}
-
-impl NavigationTarget {
-    /// Create a new navigation target with default settings.
-    pub fn new(target: Vec2) -> Self {
-        Self {
-            target,
-            arrival_tolerance: 16.0,
-            flight_speed: 1.0,
-        }
-    }
-
-    /// Create a navigation target with custom tolerance.
-    pub fn with_tolerance(target: Vec2, tolerance: f32) -> Self {
-        Self {
-            target,
-            arrival_tolerance: tolerance,
-            flight_speed: 1.0,
-        }
-    }
-
-    /// Set the flight speed multiplier.
-    pub fn with_flight_speed(mut self, speed: f32) -> Self {
-        self.flight_speed = speed.clamp(0.0, 1.0);
-        self
-    }
-}
-
-/// Component tracking the current navigation handover state.
-///
-/// This is automatically added and managed by the navigation systems.
+/// Add this to actors that need to navigate across grid boundaries.
 #[derive(Component, Clone, Debug, Default, Reflect)]
 pub struct NavigationHandover {
     /// Current state of the navigation state machine.
     pub state: NavigationState,
     /// The intermediate edge point (if transitioning at grid boundary).
     pub edge_point: Option<Vec2>,
-    /// The final target position.
+    /// The final target position (may be outside grid).
     pub final_target: Vec2,
     /// The scenario determined when navigation started.
-    pub scenario: Option<NavigationScenario>,
+    pub scenario: NavigationScenario,
 }
 
 impl NavigationHandover {
-    /// Create a new handover state for a target.
-    pub fn new(target: Vec2) -> Self {
+    /// Create a new handover for navigating to a target.
+    pub fn new(final_target: Vec2) -> Self {
         Self {
             state: NavigationState::Idle,
             edge_point: None,
-            final_target: target,
-            scenario: None,
+            final_target,
+            scenario: NavigationScenario::BothInside,
+        }
+    }
+
+    /// Evaluate the navigation scenario and set up the state machine.
+    ///
+    /// Returns the scenario and updates internal state. Call this when
+    /// setting a new navigation target.
+    pub fn evaluate(&mut self, start: Vec2, target: Vec2, bounds: &NavigationBounds) -> NavigationScenario {
+        self.final_target = target;
+        self.scenario = NavigationScenario::from_positions(start, target, bounds);
+
+        match self.scenario {
+            NavigationScenario::BothInside => {
+                self.state = NavigationState::FollowingPath;
+                self.edge_point = None;
+            }
+            NavigationScenario::StartInsideTargetOutside => {
+                // Navigate to edge first, then fly
+                let edge = bounds.closest_edge_point(start, target);
+                self.edge_point = Some(edge);
+                self.state = NavigationState::FollowingPath;
+            }
+            NavigationScenario::StartOutsideTargetInside => {
+                // Fly to edge first, then pathfind
+                let edge = bounds.closest_edge_point(start, target);
+                self.edge_point = Some(edge);
+                self.state = NavigationState::FlyingToEdge;
+            }
+            NavigationScenario::BothOutside => {
+                self.edge_point = None;
+                self.state = NavigationState::DirectFlight;
+            }
+        }
+
+        self.scenario
+    }
+
+    /// Get the current navigation target (may be edge point or final target).
+    ///
+    /// Use this to get the appropriate target for either pathfinding or flight.
+    pub fn current_target(&self) -> Vec2 {
+        match self.state {
+            NavigationState::FollowingPath => {
+                // If we have an edge point, navigate to edge first
+                self.edge_point.unwrap_or(self.final_target)
+            }
+            NavigationState::FlyingToEdge => {
+                self.edge_point.unwrap_or(self.final_target)
+            }
+            NavigationState::FlyingFromEdge | NavigationState::DirectFlight => {
+                self.final_target
+            }
+            NavigationState::Idle | NavigationState::Arrived => {
+                self.final_target
+            }
+        }
+    }
+
+    /// Notify that the current waypoint was reached.
+    ///
+    /// Call this when the actor reaches the edge point or final target.
+    /// Returns true if navigation is complete.
+    pub fn waypoint_reached(&mut self) -> bool {
+        match self.state {
+            NavigationState::FollowingPath if self.edge_point.is_some() => {
+                // Reached edge, now fly to final target
+                self.state = NavigationState::FlyingFromEdge;
+                false
+            }
+            NavigationState::FollowingPath => {
+                // Reached final target via pathfinding
+                self.state = NavigationState::Arrived;
+                true
+            }
+            NavigationState::FlyingToEdge => {
+                // Reached edge, now pathfind to target
+                self.state = NavigationState::FollowingPath;
+                self.edge_point = None; // Clear edge point, now targeting final
+                false
+            }
+            NavigationState::FlyingFromEdge | NavigationState::DirectFlight => {
+                self.state = NavigationState::Arrived;
+                true
+            }
+            _ => true,
         }
     }
 
@@ -336,7 +425,7 @@ impl NavigationHandover {
     pub fn reset(&mut self) {
         self.state = NavigationState::Idle;
         self.edge_point = None;
-        self.scenario = None;
+        self.scenario = NavigationScenario::BothInside;
     }
 
     /// Check if navigation is complete.
@@ -354,333 +443,14 @@ impl NavigationHandover {
         )
     }
 
-    /// Check if currently following a path.
+    /// Check if currently following a path (use northstar).
     pub fn is_following_path(&self) -> bool {
         self.state == NavigationState::FollowingPath
     }
-}
 
-/// Event fired when navigation state changes.
-#[derive(Event, Clone, Debug)]
-pub struct NavigationStateChanged {
-    pub entity: Entity,
-    pub old_state: NavigationState,
-    pub new_state: NavigationState,
-}
-
-/// Event fired when an entity should request a path from bevy_northstar.
-///
-/// Listen for this event to trigger `PathRequest` creation in northstar.
-/// The `start` and `goal` are guaranteed to be within grid bounds.
-#[derive(Event, Clone, Debug)]
-pub struct RequestPathfinding {
-    pub entity: Entity,
-    /// Start position (guaranteed to be in grid bounds).
-    pub start: Vec2,
-    /// Goal position (guaranteed to be in grid bounds).
-    pub goal: Vec2,
-}
-
-/// Event fired when free flight should begin.
-#[derive(Event, Clone, Debug)]
-pub struct BeginFreeFlight {
-    pub entity: Entity,
-    /// Position to fly toward.
-    pub target: Vec2,
-    /// Speed multiplier.
-    pub speed: f32,
-}
-
-/// Event fired when navigation is complete.
-#[derive(Event, Clone, Debug)]
-pub struct NavigationComplete {
-    pub entity: Entity,
-    /// Final position reached.
-    pub position: Vec2,
-}
-
-/// System set for navigation handover systems.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum NavigationHandoverSet {
-    /// Evaluate navigation targets and determine scenarios.
-    Evaluate,
-    /// Update state machine based on current position.
-    UpdateState,
-    /// Apply movement for free flight.
-    ApplyMovement,
-}
-
-/// Plugin for the navigation handover system.
-pub struct NavigationHandoverPlugin;
-
-impl Plugin for NavigationHandoverPlugin {
-    fn build(&self, app: &mut App) {
-        app.register_type::<NavigationTarget>();
-        app.register_type::<NavigationHandover>();
-        app.register_type::<NavigationState>();
-
-        app.init_resource::<NavigationBounds>();
-
-        app.add_event::<NavigationStateChanged>();
-        app.add_event::<RequestPathfinding>();
-        app.add_event::<BeginFreeFlight>();
-        app.add_event::<NavigationComplete>();
-
-        app.configure_sets(
-            FixedUpdate,
-            (
-                NavigationHandoverSet::Evaluate,
-                NavigationHandoverSet::UpdateState,
-                NavigationHandoverSet::ApplyMovement,
-            )
-                .chain(),
-        );
-
-        app.add_systems(
-            FixedUpdate,
-            (
-                init_navigation_handover,
-                evaluate_navigation_scenario,
-            )
-                .chain()
-                .in_set(NavigationHandoverSet::Evaluate),
-        );
-
-        app.add_systems(
-            FixedUpdate,
-            update_navigation_state.in_set(NavigationHandoverSet::UpdateState),
-        );
-
-        app.add_systems(
-            FixedUpdate,
-            apply_free_flight_movement.in_set(NavigationHandoverSet::ApplyMovement),
-        );
-
-        app.add_systems(
-            FixedUpdate,
-            cleanup_completed_navigation.after(NavigationHandoverSet::ApplyMovement),
-        );
-    }
-}
-
-/// Initialize NavigationHandover for new NavigationTarget components.
-fn init_navigation_handover(
-    mut commands: Commands,
-    query: Query<(Entity, &NavigationTarget), Without<NavigationHandover>>,
-) {
-    for (entity, target) in &query {
-        commands
-            .entity(entity)
-            .insert(NavigationHandover::new(target.target));
-    }
-}
-
-/// Evaluate the navigation scenario and set initial state.
-fn evaluate_navigation_scenario(
-    bounds: Res<NavigationBounds>,
-    mut query: Query<
-        (Entity, &Transform, &NavigationTarget, &mut NavigationHandover),
-        Changed<NavigationTarget>,
-    >,
-    mut state_events: EventWriter<NavigationStateChanged>,
-    mut pathfinding_events: EventWriter<RequestPathfinding>,
-    mut flight_events: EventWriter<BeginFreeFlight>,
-) {
-    for (entity, transform, nav_target, mut handover) in &mut query {
-        let start = transform.translation.truncate();
-        let target = nav_target.target;
-
-        let scenario = NavigationScenario::from_positions(start, target, &bounds);
-        handover.scenario = Some(scenario);
-        handover.final_target = target;
-
-        let old_state = handover.state;
-
-        match scenario {
-            NavigationScenario::BothInside => {
-                // Normal pathfinding - delegate entirely to northstar
-                handover.state = NavigationState::FollowingPath;
-                handover.edge_point = None;
-
-                pathfinding_events.write(RequestPathfinding {
-                    entity,
-                    start,
-                    goal: target,
-                });
-            }
-            NavigationScenario::StartInsideTargetOutside => {
-                // Navigate to edge, then fly out
-                let edge = bounds.closest_edge_point(start, target);
-                handover.edge_point = Some(edge);
-                handover.state = NavigationState::FollowingPath;
-
-                // First, pathfind to the edge
-                pathfinding_events.write(RequestPathfinding {
-                    entity,
-                    start,
-                    goal: edge,
-                });
-            }
-            NavigationScenario::StartOutsideTargetInside => {
-                // Fly to edge, then pathfind
-                let edge = bounds.closest_edge_point(start, target);
-                handover.edge_point = Some(edge);
-                handover.state = NavigationState::FlyingToEdge;
-
-                flight_events.write(BeginFreeFlight {
-                    entity,
-                    target: edge,
-                    speed: nav_target.flight_speed,
-                });
-            }
-            NavigationScenario::BothOutside => {
-                // Direct flight
-                handover.edge_point = None;
-                handover.state = NavigationState::DirectFlight;
-
-                flight_events.write(BeginFreeFlight {
-                    entity,
-                    target,
-                    speed: nav_target.flight_speed,
-                });
-            }
-        }
-
-        if old_state != handover.state {
-            state_events.write(NavigationStateChanged {
-                entity,
-                old_state,
-                new_state: handover.state,
-            });
-        }
-    }
-}
-
-/// Update navigation state based on current position and progress.
-fn update_navigation_state(
-    mut query: Query<(
-        Entity,
-        &Transform,
-        &NavigationTarget,
-        &mut NavigationHandover,
-    )>,
-    mut state_events: EventWriter<NavigationStateChanged>,
-    mut pathfinding_events: EventWriter<RequestPathfinding>,
-    mut flight_events: EventWriter<BeginFreeFlight>,
-    mut complete_events: EventWriter<NavigationComplete>,
-) {
-    for (entity, transform, nav_target, mut handover) in &mut query {
-        let pos = transform.translation.truncate();
-        let old_state = handover.state;
-
-        match handover.state {
-            NavigationState::Idle => {
-                // Nothing to do
-            }
-            NavigationState::FollowingPath => {
-                // Check if we need to transition to flight after reaching edge
-                if let Some(edge) = handover.edge_point {
-                    if pos.distance(edge) < nav_target.arrival_tolerance {
-                        // Reached edge, now fly to final target
-                        handover.state = NavigationState::FlyingFromEdge;
-
-                        flight_events.write(BeginFreeFlight {
-                            entity,
-                            target: handover.final_target,
-                            speed: nav_target.flight_speed,
-                        });
-                    }
-                }
-                // Otherwise, northstar handles path following
-            }
-            NavigationState::FlyingToEdge => {
-                if let Some(edge) = handover.edge_point {
-                    if pos.distance(edge) < nav_target.arrival_tolerance {
-                        // Reached edge, now pathfind to target
-                        handover.state = NavigationState::FollowingPath;
-
-                        pathfinding_events.write(RequestPathfinding {
-                            entity,
-                            start: pos,
-                            goal: handover.final_target,
-                        });
-                    }
-                }
-            }
-            NavigationState::FlyingFromEdge | NavigationState::DirectFlight => {
-                if pos.distance(handover.final_target) < nav_target.arrival_tolerance {
-                    handover.state = NavigationState::Arrived;
-
-                    complete_events.write(NavigationComplete {
-                        entity,
-                        position: pos,
-                    });
-                }
-            }
-            NavigationState::Arrived => {
-                // Navigation complete, state persists until target is removed
-            }
-        }
-
-        if old_state != handover.state {
-            state_events.write(NavigationStateChanged {
-                entity,
-                old_state,
-                new_state: handover.state,
-            });
-        }
-    }
-}
-
-/// Apply movement intent for free flight navigation.
-fn apply_free_flight_movement(
-    mut query: Query<(
-        &Transform,
-        &NavigationTarget,
-        &NavigationHandover,
-        &mut crate::intent::MovementIntent,
-    )>,
-) {
-    for (transform, nav_target, handover, mut intent) in &mut query {
-        if !handover.is_flying() {
-            continue;
-        }
-
-        let pos = transform.translation.truncate();
-        let target = match handover.state {
-            NavigationState::FlyingToEdge => handover.edge_point.unwrap_or(handover.final_target),
-            NavigationState::FlyingFromEdge | NavigationState::DirectFlight => {
-                handover.final_target
-            }
-            _ => continue,
-        };
-
-        let to_target = target - pos;
-        let distance = to_target.length();
-
-        if distance < nav_target.arrival_tolerance {
-            // Close enough, stop flying
-            intent.set_fly(0.0);
-            intent.set_fly_horizontal(0.0);
-            continue;
-        }
-
-        let dir = to_target / distance;
-
-        // Apply flight intent based on direction
-        intent.set_fly_horizontal(dir.x * nav_target.flight_speed);
-        intent.set_fly(dir.y * nav_target.flight_speed);
-        intent.set_fly_speed(nav_target.flight_speed);
-    }
-}
-
-/// Clean up navigation components when navigation is complete and target removed.
-fn cleanup_completed_navigation(
-    mut commands: Commands,
-    query: Query<(Entity, &NavigationHandover), Without<NavigationTarget>>,
-) {
-    for (entity, _handover) in &query {
-        commands.entity(entity).remove::<NavigationHandover>();
+    /// Check if idle (no active navigation).
+    pub fn is_idle(&self) -> bool {
+        self.state == NavigationState::Idle
     }
 }
 
@@ -714,8 +484,26 @@ mod tests {
         assert!(bounds.contains_with_margin(Vec2::new(50.0, 50.0)));
         assert!(bounds.contains_with_margin(Vec2::new(10.0, 10.0)));
         assert!(bounds.contains_with_margin(Vec2::new(90.0, 90.0)));
-        assert!(!bounds.contains_with_margin(Vec2::new(5.0, 50.0))); // Too close to edge
-        assert!(!bounds.contains_with_margin(Vec2::new(95.0, 50.0))); // Too close to edge
+        assert!(!bounds.contains_with_margin(Vec2::new(5.0, 50.0)));
+        assert!(!bounds.contains_with_margin(Vec2::new(95.0, 50.0)));
+    }
+
+    #[test]
+    fn test_clamp_to_grid() {
+        let bounds = NavigationBounds {
+            min: Vec2::ZERO,
+            max: Vec2::new(100.0, 100.0),
+            edge_margin: 10.0,
+        };
+
+        // Inside - unchanged
+        assert_eq!(bounds.clamp_to_grid(Vec2::new(50.0, 50.0)), Vec2::new(50.0, 50.0));
+
+        // Outside - clamped
+        assert_eq!(bounds.clamp_to_grid(Vec2::new(-50.0, 50.0)), Vec2::new(0.0, 50.0));
+        assert_eq!(bounds.clamp_to_grid(Vec2::new(150.0, 50.0)), Vec2::new(100.0, 50.0));
+        assert_eq!(bounds.clamp_to_grid(Vec2::new(50.0, -50.0)), Vec2::new(50.0, 0.0));
+        assert_eq!(bounds.clamp_to_grid(Vec2::new(50.0, 150.0)), Vec2::new(50.0, 100.0));
     }
 
     #[test]
@@ -726,25 +514,21 @@ mod tests {
             edge_margin: 10.0,
         };
 
-        // Both inside
         assert_eq!(
             NavigationScenario::from_positions(Vec2::new(50.0, 50.0), Vec2::new(60.0, 60.0), &bounds),
             NavigationScenario::BothInside
         );
 
-        // Start inside, target outside
         assert_eq!(
             NavigationScenario::from_positions(Vec2::new(50.0, 50.0), Vec2::new(150.0, 50.0), &bounds),
             NavigationScenario::StartInsideTargetOutside
         );
 
-        // Start outside, target inside
         assert_eq!(
             NavigationScenario::from_positions(Vec2::new(-50.0, 50.0), Vec2::new(50.0, 50.0), &bounds),
             NavigationScenario::StartOutsideTargetInside
         );
 
-        // Both outside
         assert_eq!(
             NavigationScenario::from_positions(Vec2::new(-50.0, 50.0), Vec2::new(150.0, 50.0), &bounds),
             NavigationScenario::BothOutside
@@ -761,13 +545,57 @@ mod tests {
 
         // From outside left, going right
         let edge = bounds.closest_edge_point(Vec2::new(-50.0, 50.0), Vec2::new(50.0, 50.0));
-        assert!((edge.x - 10.0).abs() < 0.1); // Should hit left margin
+        assert!((edge.x - 10.0).abs() < 0.1);
         assert!((edge.y - 50.0).abs() < 0.1);
 
         // From inside, going outside right
         let edge = bounds.closest_edge_point(Vec2::new(50.0, 50.0), Vec2::new(150.0, 50.0));
-        assert!((edge.x - 90.0).abs() < 0.1); // Should hit right margin
+        assert!((edge.x - 90.0).abs() < 0.1);
         assert!((edge.y - 50.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_handover_evaluate_both_inside() {
+        let bounds = NavigationBounds::from_grid(100, 100, 1.0);
+        let mut handover = NavigationHandover::new(Vec2::ZERO);
+
+        let scenario = handover.evaluate(Vec2::new(10.0, 10.0), Vec2::new(50.0, 50.0), &bounds);
+
+        assert_eq!(scenario, NavigationScenario::BothInside);
+        assert!(handover.is_following_path());
+        assert_eq!(handover.current_target(), Vec2::new(50.0, 50.0));
+    }
+
+    #[test]
+    fn test_handover_evaluate_start_outside() {
+        let bounds = NavigationBounds::from_grid(100, 100, 1.0);
+        let mut handover = NavigationHandover::new(Vec2::ZERO);
+
+        let scenario = handover.evaluate(Vec2::new(-50.0, 50.0), Vec2::new(50.0, 50.0), &bounds);
+
+        assert_eq!(scenario, NavigationScenario::StartOutsideTargetInside);
+        assert!(handover.is_flying());
+        assert!(handover.edge_point.is_some());
+    }
+
+    #[test]
+    fn test_handover_waypoint_transitions() {
+        let bounds = NavigationBounds::from_grid(100, 100, 1.0);
+        let mut handover = NavigationHandover::new(Vec2::ZERO);
+
+        // Start outside, target inside
+        handover.evaluate(Vec2::new(-50.0, 50.0), Vec2::new(50.0, 50.0), &bounds);
+        assert!(handover.is_flying());
+
+        // Reach edge
+        let complete = handover.waypoint_reached();
+        assert!(!complete);
+        assert!(handover.is_following_path());
+
+        // Reach final target
+        let complete = handover.waypoint_reached();
+        assert!(complete);
+        assert!(handover.is_arrived());
     }
 
     #[test]
@@ -777,6 +605,7 @@ mod tests {
         assert!(!handover.is_flying());
         assert!(!handover.is_following_path());
         assert!(!handover.is_arrived());
+        assert!(handover.is_idle());
 
         handover.state = NavigationState::FlyingToEdge;
         assert!(handover.is_flying());
