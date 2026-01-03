@@ -93,6 +93,7 @@ pub mod backend;
 pub mod collision;
 pub mod config;
 pub mod intent;
+pub mod navigation;
 
 // Systems are internal - they're added automatically by the plugin
 pub(crate) mod systems;
@@ -257,6 +258,11 @@ pub mod prelude {
     pub use crate::collision::CollisionData;
     pub use crate::config::{CharacterController, ControllerConfig, JumpType, StairConfig};
     pub use crate::intent::{JumpRequest, MovementIntent};
+    pub use crate::navigation::{
+        BeginFreeFlight, NavigationBounds, NavigationComplete, NavigationHandover,
+        NavigationHandoverPlugin, NavigationHandoverSet, NavigationScenario, NavigationState,
+        NavigationStateChanged, NavigationTarget, RequestPathfinding,
+    };
 
     #[cfg(feature = "rapier2d")]
     pub use crate::rapier::Rapier2dBackend;
